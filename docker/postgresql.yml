@@ -1,0 +1,17 @@
+name: mapper
+services:
+  postgresql:
+    image: postgres:15.2
+
+    environment:
+      - POSTGRES_USER=mapper
+      - POSTGRES_PASSWORD=
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+ 
+    ports:
+      - 5432:5432
