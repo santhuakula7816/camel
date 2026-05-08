@@ -1,0 +1,50 @@
+name: Register jsonmap API Contract
+
+on:
+  push:
+    branches:
+      - dev
+    tags:
+      - 'v*'
+
+jobs:
+  register-api-contract:
+    runs-on: ubuntu-latest
+
+    env:
+      REGISTRY_URL: ${{ secrets.API_REGISTRY_URL }}
+      API_NAME: jsonmap
+      DESCRIPTION: jsonmap CRUD APIs
+      GIT_REPOSITORY: https://github.com/santhuakula7816/camel
+      CONTRACT_FILE: openapi/jsonmap-openapi.json
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version and environment
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "API_VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+            echo "DEPLOY_ENV=prod" >> "$GITHUB_ENV"
+          else
+            echo "API_VERSION=dev-${GITHUB_SHA::8}" >> "$GITHUB_ENV"
+            echo "DEPLOY_ENV=dev" >> "$GITHUB_ENV"
+          fi
+
+      - name: Register API contract
+        run: |
+          curl --fail --show-error --silent \
+            --request POST "$REGISTRY_URL/registry/apis/register-file" \
+            --form "apiName=$API_NAME" \
+            --form "description=$DESCRIPTION" \
+            --form "gitRepository=$GIT_REPOSITORY" \
+            --form "version=$API_VERSION" \
+            --form "breakingChange=false" \
+            --form "collectionFile=@$CONTRACT_FILE;type=application/json"
+
+      - name: Mark deployed version
+        run: |
+          curl --fail --show-error --silent \
+            --request POST "$REGISTRY_URL/registry/apis/deploy" \
+            --header "Content-Type: application/json" \
+            --data "{\"apiName\":\"$API_NAME\",\"version\":\"$API_VERSION\",\"environment\":\"$DEPLOY_ENV\"}"
