@@ -26,7 +26,7 @@ public class MapperJsonController {
         this.mapperService = mapperService;
     }
 
-    @PostMapping("")
+    @PostMapping("/create")
     public ResponseEntity<MapperJson> createRack(@RequestBody Map<String, Object> request) {
 
         MapperJson mapperJson = new MapperJson();
@@ -37,7 +37,7 @@ public class MapperJsonController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping
+    @GetMapping("/getAll")
     public ResponseEntity<List<MapperJson>> getAllLocations() {
         List<MapperJson> mapperJson = mapperService.getAllJsons();
         return ResponseEntity.ok(mapperJson);
