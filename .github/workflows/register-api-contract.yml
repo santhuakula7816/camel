@@ -1,4 +1,6 @@
-name: Register API with Central Registry
+# Copy the corrected workflow I provided above
+cat > .github/workflows/register-api.yml << 'EOF'
+name: Register JSON Map Service API
 
 on:
   push:
@@ -8,14 +10,11 @@ on:
       - 'release/**'
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - main
-      - dev
 
 jobs:
   register:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -23,7 +22,6 @@ jobs:
       - name: Determine environment and version
         id: version
         run: |
-          # Determine deployment environment based on branch/tag
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION="${{ github.ref }}" 
             VERSION=${VERSION#refs/tags/}
@@ -46,25 +44,40 @@ jobs:
           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Verify Postman collection exists
+        run: |
+          if [ ! -f "postman/collection.json" ]; then
+            echo "❌ ERROR: Postman collection not found at postman/collection.json"
+            exit 1
+          fi
+
       - name: Register API with Central Registry
         run: |
-          # Register Postman collection
-          curl -X POST "${{ secrets.REGISTRY_URL }}/registry/apis/register-file" \
-            -H "Authorization: Bearer ${{ secrets.REGISTRY_TOKEN }}" \
-            -F "file=@postman-collections/policy-service.postman_collection.json" \
-            -F "apiName=policy-service" \
-            -F "apiVersion=${{ steps.version.outputs.version }}" \
+          curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/register-file" \
+            -F "apiName=jsonmap-service" \
+            -F "description=JSON Mapping Service" \
             -F "gitRepository=${{ github.repository }}" \
-            -F "description=Insurance Policy Management Service" \
-            -F "breakingChange=false"
+            -F "version=${{ steps.version.outputs.version }}" \
+            -F "breakingChange=false" \
+            -F "collectionFile=@postman/collection.json;type=application/json"
+
+      - name: Register environment
+        run: |
+          curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/environments" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "envName": "${{ steps.version.outputs.environment }}",
+              "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
+            }' || true
 
       - name: Mark API Deployment
         run: |
-          curl -X POST "${{ secrets.REGISTRY_URL }}/registry/apis/deploy" \
-            -H "Authorization: Bearer ${{ secrets.REGISTRY_TOKEN }}" \
+          curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/deploy" \
             -H "Content-Type: application/json" \
             -d '{
-              "apiName": "policy-service",
+              "apiName": "jsonmap-service",
               "version": "${{ steps.version.outputs.version }}",
-              "environment": "${{ steps.version.outputs.environment }}"
+              "environment": "${{ steps.version.outputs.environment }}",
+              "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
+EOF
