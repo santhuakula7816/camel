@@ -1,4 +1,3 @@
-# Copy the corrected workflow I provided above
 name: Register JSON Map Service API
 
 on:
@@ -6,19 +5,40 @@ on:
     branches:
       - main
       - dev
-      - 'release/**'
+      - "release/**"
     tags:
-      - 'v*'
+      - "v*"
 
 jobs:
   register:
     runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
 
-      - name: Determine environment and version
+    steps:
+      - name: Checkout API code (camel)
+        uses: actions/checkout@v3
+        with:
+          path: ./camel
+
+      - name: Checkout Central Registry code (chil)
+        uses: actions/checkout@v3
+        with:
+          repository: santhuakula7816/chil # Adjust to your username/repo
+          path: ./chil
+
+      - name: Start Central Registry
+        run: |
+          cd ./chil
+          chmod +x gradlew
+          # Run in background
+          ./gradlew bootRun &
+          cd ..
+          # Wait for registry to be ready on port 8085
+          for i in {1..30}; do
+            curl -f http://localhost:8085/actuator/health && break || sleep 2
+          done
+
+      - name: Determine environment and version (from camel repo)
+        working-directory: ./camel
         id: version
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
@@ -39,11 +59,12 @@ jobs:
             ENVIRONMENT="dev"
             VERSION="pr-${{ github.event.pull_request.number }}"
           fi
-          
+
           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Verify Postman collection exists
+        working-directory: ./camel
         run: |
           if [ ! -f "postman/jsonmap.postman_collection.json" ]; then
             echo "❌ ERROR: Postman collection not found at postman/jsonmap.postman_collection.json"
@@ -51,17 +72,20 @@ jobs:
           fi
 
       - name: Register API with Central Registry
+        working-directory: ./camel
         run: |
-          curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/register-file" \
+          curl -X POST "http://localhost:8085/registry/apis/register-file" \
             -F "apiName=jsonmap-service" \
             -F "description=JSON Mapping Service" \
             -F "gitRepository=${{ github.repository }}" \
             -F "version=${{ steps.version.outputs.version }}" \
             -F "breakingChange=false" \
             -F "collectionFile=@postman/jsonmap.postman_collection.json;type=application/json"
+
       - name: Register environment
+        working-directory: ./camel
         run: |
-          curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/environments" \
+          curl -X POST "http://localhost:8085/registry/environments" \
             -H "Content-Type: application/json" \
             -d '{
               "envName": "${{ steps.version.outputs.environment }}",
@@ -69,8 +93,9 @@ jobs:
             }' || true
 
       - name: Mark API Deployment
+        working-directory: ./camel
         run: |
-          curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/deploy" \
+          curl -X POST "http://localhost:8085/registry/apis/deploy" \
             -H "Content-Type: application/json" \
             -d '{
               "apiName": "jsonmap-service",
