@@ -1,5 +1,4 @@
 # Copy the corrected workflow I provided above
-cat > .github/workflows/register-api.yml << 'EOF'
 name: Register JSON Map Service API
 
 on:
@@ -80,4 +79,3 @@ jobs:
               "environment": "${{ steps.version.outputs.environment }}",
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
-EOF
