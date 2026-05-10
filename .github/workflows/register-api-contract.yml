@@ -1,4 +1,83 @@
-# Copy the corrected workflow I provided above
+# # Copy the corrected workflow I provided above
+# name: Register JSON Map Service API
+
+# on:
+#   push:
+#     branches:
+#       - main
+#       - dev
+#       - 'release/**'
+#     tags:
+#       - 'v*'
+
+# jobs:
+#   register:
+#     runs-on: ubuntu-latest
+    
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v3
+
+#       - name: Determine environment and version
+#         id: version
+#         run: |
+#           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+#             VERSION="${{ github.ref }}" 
+#             VERSION=${VERSION#refs/tags/}
+#             ENVIRONMENT="prod"
+#           elif [[ "${{ github.ref }}" == refs/heads/release/* ]]; then
+#             ENVIRONMENT="uat"
+#             VERSION="${{ github.ref }}"
+#             VERSION=${VERSION#refs/heads/release/}
+#           elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
+#             ENVIRONMENT="staging"
+#             VERSION="main-$(date +%s)"
+#           elif [[ "${{ github.ref }}" == refs/heads/dev ]]; then
+#             ENVIRONMENT="dev"
+#             VERSION="dev-$(date +%s)"
+#           else
+#             ENVIRONMENT="dev"
+#             VERSION="pr-${{ github.event.pull_request.number }}"
+#           fi
+          
+#           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+#           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+#       - name: Verify Postman collection exists
+#         run: |
+#           if [ ! -f "postman/jsonmap.postman_collection.json" ]; then
+#             echo "❌ ERROR: Postman collection not found at postman/jsonmap.postman_collection.json"
+#             exit 1
+#           fi
+
+#       - name: Register API with Central Registry
+#         run: |
+#           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/register-file" \
+#             -F "apiName=jsonmap-service" \
+#             -F "description=JSON Mapping Service" \
+#             -F "gitRepository=${{ github.repository }}" \
+#             -F "version=${{ steps.version.outputs.version }}" \
+#             -F "breakingChange=false" \
+#             -F "collectionFile=@postman/jsonmap.postman_collection.json;type=application/json"
+#       - name: Register environment
+#         run: |
+#           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/environments" \
+#             -H "Content-Type: application/json" \
+#             -d '{
+#               "envName": "${{ steps.version.outputs.environment }}",
+#               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
+#             }' || true
+
+#       - name: Mark API Deployment
+#         run: |
+#           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/deploy" \
+#             -H "Content-Type: application/json" \
+#             -d '{
+#               "apiName": "jsonmap-service",
+#               "version": "${{ steps.version.outputs.version }}",
+#               "environment": "${{ steps.version.outputs.environment }}",
+#               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
+#             }'
 name: Register JSON Map Service API
 
 on:
@@ -9,6 +88,12 @@ on:
       - 'release/**'
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Skip actual registry calls (for testing)'
+        type: boolean
+        default: false
 
 jobs:
   register:
@@ -50,7 +135,9 @@ jobs:
             exit 1
           fi
 
+      # Registry steps – only run when NOT in test mode (manual trigger with test_mode=false or push/tag events)
       - name: Register API with Central Registry
+        if: ${{ github.event_name != 'workflow_dispatch' || ! inputs.test_mode }}
         run: |
           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/register-file" \
             -F "apiName=jsonmap-service" \
@@ -59,7 +146,9 @@ jobs:
             -F "version=${{ steps.version.outputs.version }}" \
             -F "breakingChange=false" \
             -F "collectionFile=@postman/jsonmap.postman_collection.json;type=application/json"
+
       - name: Register environment
+        if: ${{ github.event_name != 'workflow_dispatch' || ! inputs.test_mode }}
         run: |
           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/environments" \
             -H "Content-Type: application/json" \
@@ -69,6 +158,7 @@ jobs:
             }' || true
 
       - name: Mark API Deployment
+        if: ${{ github.event_name != 'workflow_dispatch' || ! inputs.test_mode }}
         run: |
           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/deploy" \
             -H "Content-Type: application/json" \
@@ -78,3 +168,8 @@ jobs:
               "environment": "${{ steps.version.outputs.environment }}",
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
+
+      # Optional: mock confirmation when running in test mode
+      - name: Test mode active – registry calls skipped
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_mode }}
+        run: echo "✅ TEST MODE: Registry registration, environment, and deployment steps were skipped."
