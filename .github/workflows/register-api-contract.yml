@@ -1,50 +1,70 @@
-name: Register jsonmap API Contract
+name: Register API with Central Registry
 
 on:
   push:
     branches:
+      - main
       - dev
+      - 'release/**'
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - main
+      - dev
 
 jobs:
-  register-api-contract:
+  register:
     runs-on: ubuntu-latest
-
-    env:
-      REGISTRY_URL: ${{ secrets.API_REGISTRY_URL }}
-      API_NAME: jsonmap
-      DESCRIPTION: jsonmap CRUD APIs
-      GIT_REPOSITORY: https://github.com/santhuakula7816/camel
-      CONTRACT_FILE: openapi/jsonmap-openapi.json
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Resolve version and environment
+      - name: Determine environment and version
+        id: version
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            echo "API_VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
-            echo "DEPLOY_ENV=prod" >> "$GITHUB_ENV"
+          # Determine deployment environment based on branch/tag
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref }}" 
+            VERSION=${VERSION#refs/tags/}
+            ENVIRONMENT="prod"
+          elif [[ "${{ github.ref }}" == refs/heads/release/* ]]; then
+            ENVIRONMENT="uat"
+            VERSION="${{ github.ref }}"
+            VERSION=${VERSION#refs/heads/release/}
+          elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
+            ENVIRONMENT="staging"
+            VERSION="main-$(date +%s)"
+          elif [[ "${{ github.ref }}" == refs/heads/dev ]]; then
+            ENVIRONMENT="dev"
+            VERSION="dev-$(date +%s)"
           else
-            echo "API_VERSION=dev-${GITHUB_SHA::8}" >> "$GITHUB_ENV"
-            echo "DEPLOY_ENV=dev" >> "$GITHUB_ENV"
+            ENVIRONMENT="dev"
+            VERSION="pr-${{ github.event.pull_request.number }}"
           fi
+          
+          echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Register API contract
+      - name: Register API with Central Registry
         run: |
-          curl --fail --show-error --silent \
-            --request POST "$REGISTRY_URL/registry/apis/register-file" \
-            --form "apiName=$API_NAME" \
-            --form "description=$DESCRIPTION" \
-            --form "gitRepository=$GIT_REPOSITORY" \
-            --form "version=$API_VERSION" \
-            --form "breakingChange=false" \
-            --form "collectionFile=@$CONTRACT_FILE;type=application/json"
+          # Register Postman collection
+          curl -X POST "${{ secrets.REGISTRY_URL }}/registry/apis/register-file" \
+            -H "Authorization: Bearer ${{ secrets.REGISTRY_TOKEN }}" \
+            -F "file=@postman-collections/policy-service.postman_collection.json" \
+            -F "apiName=policy-service" \
+            -F "apiVersion=${{ steps.version.outputs.version }}" \
+            -F "gitRepository=${{ github.repository }}" \
+            -F "description=Insurance Policy Management Service" \
+            -F "breakingChange=false"
 
-      - name: Mark deployed version
+      - name: Mark API Deployment
         run: |
-          curl --fail --show-error --silent \
-            --request POST "$REGISTRY_URL/registry/apis/deploy" \
-            --header "Content-Type: application/json" \
-            --data "{\"apiName\":\"$API_NAME\",\"version\":\"$API_VERSION\",\"environment\":\"$DEPLOY_ENV\"}"
+          curl -X POST "${{ secrets.REGISTRY_URL }}/registry/apis/deploy" \
+            -H "Authorization: Bearer ${{ secrets.REGISTRY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "apiName": "policy-service",
+              "version": "${{ steps.version.outputs.version }}",
+              "environment": "${{ steps.version.outputs.environment }}"
+            }'
