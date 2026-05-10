@@ -98,7 +98,7 @@
 #         id: version
 #         run: |
 #           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-#             VERSION="${{ github.ref }}" 
+#             VERSION="${{ github.ref }}"
 #             VERSION=${VERSION#refs/tags/}
 #             ENVIRONMENT="prod"
 #           elif [[ "${{ github.ref }}" == refs/heads/release/* ]]; then
@@ -172,7 +172,6 @@
 #               "environment": "${{ steps.version.outputs.environment }}",
 #               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
 #             }'
-
 
 name: Register JSON Map Service API
 
@@ -269,29 +268,36 @@ jobs:
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
 
-      # ---------- Postman: Create or Update COLLECTION ----------
+      # ---------- Postman: Create or Update COLLECTION (with workspace support) ----------
       - name: Create or Update Postman Collection
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+          POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         run: |
           COLLECTION_FILE="postman/jsonmap.postman_collection.json"
-          COLLECTION_NAME=$(jq -r '.info.name' "$COLLECTION_FILE")
-          echo "Looking for collection: $COLLECTION_NAME"
+          if [ ! -f "$COLLECTION_FILE" ]; then
+            echo "❌ File not found: $COLLECTION_FILE"
+            exit 1
+          fi
 
-          COLLECTIONS=$(curl -s -X GET "https://api.getpostman.com/collections" \
+          COLLECTION_NAME=$(jq -r '.info.name' "$COLLECTION_FILE")
+          echo "Collection name: $COLLECTION_NAME"
+
+          # Fetch collections in the specified workspace
+          COLLECTIONS=$(curl -s -X GET "https://api.getpostman.com/collections?workspace=$POSTMAN_WORKSPACE_ID" \
             -H "X-Api-Key: $POSTMAN_API_KEY")
 
           COLLECTION_ID=$(echo "$COLLECTIONS" | jq -r --arg NAME "$COLLECTION_NAME" \
             '.collections[] | select(.name == $NAME) | .id')
 
           if [ -z "$COLLECTION_ID" ]; then
-            echo "Collection does not exist – creating new one..."
-            curl -X POST "https://api.getpostman.com/collections" \
+            echo "Creating new collection in workspace $POSTMAN_WORKSPACE_ID..."
+            curl -X POST "https://api.getpostman.com/collections?workspace=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
               -H "Content-Type: application/json" \
               -d @"$COLLECTION_FILE"
           else
-            echo "Collection exists (ID: $COLLECTION_ID) – updating..."
+            echo "Updating existing collection (ID: $COLLECTION_ID)..."
             curl -X PUT "https://api.getpostman.com/collections/$COLLECTION_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
               -H "Content-Type: application/json" \
