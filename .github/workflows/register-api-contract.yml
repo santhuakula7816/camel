@@ -45,8 +45,8 @@ jobs:
 
       - name: Verify Postman collection exists
         run: |
-          if [ ! -f "postman/collection.json" ]; then
-            echo "❌ ERROR: Postman collection not found at postman/collection.json"
+          if [ ! -f "postman/jsonmap.postman_collection.json" ]; then
+            echo "❌ ERROR: Postman collection not found at postman/jsonmap.postman_collection.json"
             exit 1
           fi
 
@@ -58,8 +58,7 @@ jobs:
             -F "gitRepository=${{ github.repository }}" \
             -F "version=${{ steps.version.outputs.version }}" \
             -F "breakingChange=false" \
-            -F "collectionFile=@postman/collection.json;type=application/json"
-
+            -F "collectionFile=@postman/jsonmap.postman_collection.json;type=application/json"
       - name: Register environment
         run: |
           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/environments" \
