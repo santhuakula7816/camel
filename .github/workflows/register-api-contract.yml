@@ -13,7 +13,7 @@
 # jobs:
 #   register:
 #     runs-on: ubuntu-latest
-    
+
 #     steps:
 #       - name: Checkout code
 #         uses: actions/checkout@v3
@@ -22,7 +22,7 @@
 #         id: version
 #         run: |
 #           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-#             VERSION="${{ github.ref }}" 
+#             VERSION="${{ github.ref }}"
 #             VERSION=${VERSION#refs/tags/}
 #             ENVIRONMENT="prod"
 #           elif [[ "${{ github.ref }}" == refs/heads/release/* ]]; then
@@ -39,7 +39,7 @@
 #             ENVIRONMENT="dev"
 #             VERSION="pr-${{ github.event.pull_request.number }}"
 #           fi
-          
+
 #           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
 #           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
@@ -82,23 +82,13 @@ name: Register JSON Map Service API
 
 on:
   push:
-    branches:
-      - main
-      - dev
-      - 'release/**'
-    tags:
-      - 'v*'
-  workflow_dispatch:
-    inputs:
-      test_mode:
-        description: 'Skip actual registry calls (for testing)'
-        type: boolean
-        default: false
+    branches: [main, dev, "release/**"]
+    tags: ["v*"]
 
 jobs:
   register:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -124,7 +114,6 @@ jobs:
             ENVIRONMENT="dev"
             VERSION="pr-${{ github.event.pull_request.number }}"
           fi
-          
           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
@@ -135,9 +124,25 @@ jobs:
             exit 1
           fi
 
-      # Registry steps – only run when NOT in test mode (manual trigger with test_mode=false or push/tag events)
+      - name: Start mock Central Registry for testing
+        run: |
+          python3 -c "
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          class MockRegistry(BaseHTTPRequestHandler):
+              def do_POST(self):
+                  self.send_response(200)
+                  self.send_header('Content-type', 'application/json')
+                  self.end_headers()
+                  self.wfile.write(json.dumps({'status': 'ok', 'mock': True}).encode())
+              def log_message(self, format, *args):
+                  pass
+          HTTPServer(('', 8085), MockRegistry).serve_forever()
+          " &
+          sleep 3
+          echo "✅ Mock registry running on port 8085"
+
       - name: Register API with Central Registry
-        if: ${{ github.event_name != 'workflow_dispatch' || ! inputs.test_mode }}
         run: |
           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/register-file" \
             -F "apiName=jsonmap-service" \
@@ -148,7 +153,6 @@ jobs:
             -F "collectionFile=@postman/jsonmap.postman_collection.json;type=application/json"
 
       - name: Register environment
-        if: ${{ github.event_name != 'workflow_dispatch' || ! inputs.test_mode }}
         run: |
           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/environments" \
             -H "Content-Type: application/json" \
@@ -158,7 +162,6 @@ jobs:
             }' || true
 
       - name: Mark API Deployment
-        if: ${{ github.event_name != 'workflow_dispatch' || ! inputs.test_mode }}
         run: |
           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/deploy" \
             -H "Content-Type: application/json" \
@@ -168,8 +171,3 @@ jobs:
               "environment": "${{ steps.version.outputs.environment }}",
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
-
-      # Optional: mock confirmation when running in test mode
-      - name: Test mode active – registry calls skipped
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_mode }}
-        run: echo "TEST MODE Registry registration, environment, and deployment steps were skipped."
