@@ -110,7 +110,7 @@
         "tags": [
           "mapper-json-controller"
         ],
-        "operationId": "getAllMaps",
+        "operationId": "getAllLocations",
         "responses": {
           "200": {
             "description": "OK",
