@@ -172,4 +172,4 @@ jobs:
       # Optional: mock confirmation when running in test mode
       - name: Test mode active – registry calls skipped
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_mode }}
-        run: echo "✅ TEST MODE: Registry registration, environment, and deployment steps were skipped."
+        run: echo "TEST MODE Registry registration, environment, and deployment steps were skipped."
