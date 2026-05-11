@@ -423,26 +423,26 @@ jobs:
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
 
-      # ---------- Import OpenAPI as Postman Collection (appears under "Collections" tab) ----------
+      # ---------- Import OpenAPI as Postman Collection (handles duplicates) ----------
       - name: Import OpenAPI as Postman Collection
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
         run: |
           SPEC_FILE="postman/jsonmap.postman_collection.json"
-          # Use Postman's import endpoint to create/update collection from OpenAPI
-          # First, try to find existing collection by name
           COLLECTION_NAME=$(jq -r '.info.title' "$SPEC_FILE")
-          echo "Looking for existing collection: $COLLECTION_NAME"
+          echo "Looking for existing collections named: $COLLECTION_NAME"
 
           COLLECTIONS=$(curl -s -X GET "https://api.getpostman.com/collections" \
             -H "X-Api-Key: $POSTMAN_API_KEY")
 
-          COLLECTION_ID=$(echo "$COLLECTIONS" | jq -r --arg NAME "$COLLECTION_NAME" \
-            '.collections[] | select(.name == $NAME) | .id')
+          # Read all IDs with matching name into an array
+          COLLECTION_IDS=()
+          while IFS= read -r id; do
+            COLLECTION_IDS+=("$id")
+          done < <(echo "$COLLECTIONS" | jq -r --arg NAME "$COLLECTION_NAME" '.collections[] | select(.name == $NAME) | .id')
 
-          if [ -z "$COLLECTION_ID" ]; then
+          if [ ${#COLLECTION_IDS[@]} -eq 0 ]; then
             echo "No existing collection – creating new one via import..."
-            # Import OpenAPI spec (this creates a collection)
             curl -X POST "https://api.getpostman.com/import/openapi" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
               -H "Content-Type: application/json" \
@@ -451,11 +451,13 @@ jobs:
                 "data": '"$(jq -c . "$SPEC_FILE")"'
               }'
           else
-            echo "Collection exists (ID: $COLLECTION_ID) – updating via import (will replace)..."
-            # To update, we need to delete existing and re-import, or use PUT /collections/{id} with converted format.
-            # Simpler: delete and re-import
-            curl -X DELETE "https://api.getpostman.com/collections/$COLLECTION_ID" \
-              -H "X-Api-Key: $POSTMAN_API_KEY"
+            echo "Found ${#COLLECTION_IDS[@]} existing collection(s) with name '$COLLECTION_NAME'. Deleting all..."
+            for ID in "${COLLECTION_IDS[@]}"; do
+              echo "Deleting collection ID: $ID"
+              curl -X DELETE "https://api.getpostman.com/collections/$ID" \
+                -H "X-Api-Key: $POSTMAN_API_KEY"
+            done
+            echo "All matching collections deleted. Creating new one via import..."
             curl -X POST "https://api.getpostman.com/import/openapi" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
               -H "Content-Type: application/json" \
