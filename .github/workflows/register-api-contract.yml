@@ -375,6 +375,13 @@ jobs:
           fi
           echo "✅ OpenAPI spec file found."
 
+      # ---------- Convert OpenAPI 3.1.0 → 3.0.3 for Postman compatibility ----------
+      - name: Convert OpenAPI spec to 3.0.3
+        run: |
+          cp postman/jsonmap.postman_collection.json openapi_converted.json
+          jq '.openapi = "3.0.3"' openapi_converted.json > temp.json && mv temp.json openapi_converted.json
+          echo "✅ Converted OpenAPI version to 3.0.3"
+
       # ---------- Mock Central Registry (remove when real registry is available) ----------
       - name: Start mock Central Registry for testing
         run: |
@@ -424,13 +431,13 @@ jobs:
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
 
-      # ---------- Import OpenAPI as Postman Collection (multipart upload, workspace aware) ----------
+      # ---------- Import OpenAPI as Postman Collection (using converted 3.0.3 file) ----------
       - name: Import OpenAPI as Postman Collection
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         run: |
-          SPEC_FILE="postman/jsonmap.postman_collection.json"
+          SPEC_FILE="openapi_converted.json"
           COLLECTION_NAME=$(jq -r '.info.title' "$SPEC_FILE")
           echo "Working in workspace: $POSTMAN_WORKSPACE_ID"
 
@@ -445,10 +452,9 @@ jobs:
           done < <(echo "$COLLECTIONS" | jq -r --arg NAME "$COLLECTION_NAME" '.collections[] | select(.name == $NAME) | .id')
 
           if [ ${#COLLECTION_IDS[@]} -eq 0 ]; then
-            echo "No existing collection – creating new one..."
-            curl -X POST "https://api.getpostman.com/import/postman?workspaceId=$POSTMAN_WORKSPACE_ID" \
+            echo "No existing collection – creating new one via import..."
+            curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -F "type=file" \
               -F "input=@$SPEC_FILE"
           else
             echo "Found ${#COLLECTION_IDS[@]} existing collection(s) – deleting all..."
@@ -457,8 +463,7 @@ jobs:
                 -H "X-Api-Key: $POSTMAN_API_KEY"
             done
             echo "Re‑importing collection..."
-            curl -X POST "https://api.getpostman.com/import/postman?workspaceId=$POSTMAN_WORKSPACE_ID" \
+            curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -F "type=file" \
               -F "input=@$SPEC_FILE"
           fi
