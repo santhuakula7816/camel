@@ -187,15 +187,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 🔍 DEBUG: Show content of the collection file
-      - name: Debug collection file content
-        run: |
-          echo "File exists:"
-          ls -la postman/jsonmap.postman_collection.json || echo "File missing"
-          echo "First 20 lines of file:"
-          head -20 postman/jsonmap.postman_collection.json
-          echo "--- End of debug ---"
-
       - name: Determine environment and version
         id: version
         run: |
@@ -220,14 +211,13 @@ jobs:
           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Verify Postman collection exists
+      - name: Verify OpenAPI spec exists (optional)
         run: |
-          if [ ! -f "postman/jsonmap.postman_collection.json" ]; then
-            echo "❌ ERROR: Postman collection not found at postman/jsonmap.postman_collection.json"
-            exit 1
+          if [ ! -f "openapi.json" ]; then
+            echo "⚠️ openapi.json not found – will skip API spec creation"
           fi
 
-      # ---------- Mock Central Registry (remove when real registry is available) ----------
+      # ---------- Mock Central Registry ----------
       - name: Start mock Central Registry for testing
         run: |
           python3 -c "
@@ -276,71 +266,16 @@ jobs:
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
 
-      # ---------- Postman: Create or Update COLLECTION (with debug output) ----------
-      - name: Create or Update Postman Collection
-        env:
-          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
-          POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
-        run: |
-          COLLECTION_FILE="postman/jsonmap.postman_collection.json"
-          if [ ! -f "$COLLECTION_FILE" ]; then
-            echo "❌ File not found: $COLLECTION_FILE"
-            exit 1
-          fi
-
-          # Validate JSON
-          if ! jq empty "$COLLECTION_FILE" 2>/dev/null; then
-            echo "❌ Invalid JSON in $COLLECTION_FILE"
-            exit 1
-          fi
-
-          COLLECTION_NAME=$(jq -r '.info.name // "null"' "$COLLECTION_FILE")
-          if [ "$COLLECTION_NAME" = "null" ]; then
-            echo "❌ JSON file missing '.info.name' field"
-            echo "The file may be an OpenAPI spec or other format."
-            # Fallback: try to extract from OpenAPI title if present
-            OPENAPI_TITLE=$(jq -r '.info.title // "null"' "$COLLECTION_FILE")
-            if [ "$OPENAPI_TITLE" != "null" ]; then
-              echo "Detected OpenAPI spec with title: $OPENAPI_TITLE"
-              echo "You should either commit a real Postman collection, or use the API specification step above."
-            fi
-            exit 1
-          fi
-          echo "Collection name: $COLLECTION_NAME"
-
-          # Wrap the collection under a "collection" key as required by Postman API
-          WRAPPED_JSON=$(jq '{collection: .}' "$COLLECTION_FILE")
-
-          # Fetch existing collections in the workspace
-          COLLECTIONS=$(curl -s -X GET "https://api.getpostman.com/collections?workspace=$POSTMAN_WORKSPACE_ID" \
-            -H "X-Api-Key: $POSTMAN_API_KEY")
-
-          COLLECTION_ID=$(echo "$COLLECTIONS" | jq -r --arg NAME "$COLLECTION_NAME" \
-            '.collections[] | select(.name == $NAME) | .id')
-
-          if [ -z "$COLLECTION_ID" ]; then
-            echo "Creating new collection in workspace $POSTMAN_WORKSPACE_ID..."
-            curl -X POST "https://api.getpostman.com/collections?workspace=$POSTMAN_WORKSPACE_ID" \
-              -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -H "Content-Type: application/json" \
-              -d "$WRAPPED_JSON"
-          else
-            echo "Updating existing collection (ID: $COLLECTION_ID)..."
-            curl -X PUT "https://api.getpostman.com/collections/$COLLECTION_ID" \
-              -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -H "Content-Type: application/json" \
-              -d "$WRAPPED_JSON"
-          fi
-
-      # ---------- Postman: Create or Update API SPECIFICATION (appears under "APIs" tab) ----------
+      # ---------- Postman: Create or Update API SPECIFICATION (under "APIs" tab) ----------
       - name: Create or Update API Specification
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         run: |
-          # Ensure we have an OpenAPI spec file (you must commit openapi.json to your repo)
-          if [ ! -f "openapi.json" ]; then
-            echo "⚠️ No openapi.json found – skipping API spec creation (commit your OpenAPI file as openapi.json)"
+          # Use your existing OpenAPI file (rename or adjust path)
+          SPEC_FILE="postman/jsonmap.postman_collection.json"   # or "openapi.json"
+          if [ ! -f "$SPEC_FILE" ]; then
+            echo "⚠️ No OpenAPI spec found – skipping"
             exit 0
           fi
 
@@ -365,12 +300,11 @@ jobs:
                   "name": "'"$SPEC_NAME"'",
                   "version": "'"$SPEC_VERSION"'",
                   "type": "openapi3_1",
-                  "content": '"$(jq -c . openapi.json)"'
+                  "content": '"$(jq -c . "$SPEC_FILE")"'
                 }
               }'
           else
             echo "Updating existing API specification (ID: $SPEC_ID)..."
-            # Increment patch version for each update (optional)
             NEW_VERSION="1.0.$(date +%s)"
             curl -X PUT "https://api.getpostman.com/specs/$SPEC_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
@@ -381,7 +315,7 @@ jobs:
                   "name": "'"$SPEC_NAME"'",
                   "version": "'"$NEW_VERSION"'",
                   "type": "openapi3_1",
-                  "content": '"$(jq -c . openapi.json)"'
+                  "content": '"$(jq -c . "$SPEC_FILE")"'
                 }
               }'
           fi
