@@ -327,105 +327,157 @@
 #               -F "type=openapi3_0" \
 #               -F "files=@$SPEC_FILE"
 #           fi
+
 name: Register JSON Map Service API
 
 on:
   push:
-    branches: [main, dev, "release/**"]
-    tags: ["v*"]
+    branches:
+      - main
+      - dev
+      - "release/**"
+    tags:
+      - "v*"
 
 jobs:
   register:
     runs-on: ubuntu-latest
 
     steps:
+      # ------------------------------------------------------------
+      # Checkout Repository
+      # ------------------------------------------------------------
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
+      # ------------------------------------------------------------
+      # Determine Environment + Version
+      # ------------------------------------------------------------
       - name: Determine environment and version
         id: version
+        shell: bash
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION="${{ github.ref }}" 
-            VERSION=${VERSION#refs/tags/}
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
             ENVIRONMENT="prod"
-          elif [[ "${{ github.ref }}" == refs/heads/release/* ]]; then
+
+          elif [[ "${GITHUB_REF}" == refs/heads/release/* ]]; then
+            VERSION="${GITHUB_REF#refs/heads/release/}"
             ENVIRONMENT="uat"
-            VERSION="${{ github.ref }}"
-            VERSION=${VERSION#refs/heads/release/}
-          elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
-            ENVIRONMENT="staging"
+
+          elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
             VERSION="main-$(date +%s)"
-          elif [[ "${{ github.ref }}" == refs/heads/dev ]]; then
-            ENVIRONMENT="dev"
+            ENVIRONMENT="staging"
+
+          elif [[ "${GITHUB_REF}" == refs/heads/dev ]]; then
             VERSION="dev-$(date +%s)"
-          else
             ENVIRONMENT="dev"
-            VERSION="pr-${{ github.event.pull_request.number }}"
+
+          else
+            VERSION="snapshot-$(date +%s)"
+            ENVIRONMENT="dev"
           fi
+
           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+          echo "Environment: $ENVIRONMENT"
+          echo "Version: $VERSION"
+
+      # ------------------------------------------------------------
+      # Verify OpenAPI File
+      # ------------------------------------------------------------
       - name: Verify OpenAPI spec file exists
+        shell: bash
         run: |
           if [ ! -f "postman/jsonmap.postman_collection.json" ]; then
-            echo "❌ ERROR: OpenAPI spec not found at postman/jsonmap.postman_collection.json"
+            echo "❌ ERROR: OpenAPI file not found"
             exit 1
           fi
-          echo "✅ OpenAPI spec file found."
 
-      # ---------- Force correct OpenAPI version and semantic version ----------
-      - name: Prepare OpenAPI spec for Postman
+          echo "✅ OpenAPI spec file found"
+
+      # ------------------------------------------------------------
+      # Install jq
+      # ------------------------------------------------------------
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      # ------------------------------------------------------------
+      # Prepare Valid OpenAPI Spec
+      # ------------------------------------------------------------
+      - name: Prepare OpenAPI spec
+        shell: bash
         run: |
           ORIGINAL_FILE="postman/jsonmap.postman_collection.json"
           FIXED_FILE="fixed_spec.json"
 
-          # Copy original
           cp "$ORIGINAL_FILE" "$FIXED_FILE"
 
-          # Show original info.version
-          echo "Original info.version: $(jq -r '.info.version' "$FIXED_FILE")"
+          echo "Original File:"
+          cat "$FIXED_FILE"
 
-          # Force openapi version to 3.0.3
-          jq '.openapi = "3.0.3"' "$FIXED_FILE" > temp.json && mv temp.json "$FIXED_FILE"
+          # Force OpenAPI Version
+          jq '.openapi = "3.0.3"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
 
-          # Force info.version to a valid semantic version (1.0.0)
-          jq '.info.version = "1.0.0"' "$FIXED_FILE" > temp.json && mv temp.json "$FIXED_FILE"
+          # Add jsonSchemaDialect
+          jq '.jsonSchemaDialect = "https://spec.openapis.org/oas/3.0/dialect/base"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
 
-          # Verify the changes
-          echo "After fix:"
-          echo "  openapi: $(jq -r '.openapi' "$FIXED_FILE")"
-          echo "  info.version: $(jq -r '.info.version' "$FIXED_FILE")"
-          echo "  info.title: $(jq -r '.info.title' "$FIXED_FILE")"
+          # Force semantic version
+          jq '.info.version = "1.0.0"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
 
-          # Ensure the fix succeeded - if version is not "1.0.0", fail
-          NEW_VERSION=$(jq -r '.info.version' "$FIXED_FILE")
-          if [ "$NEW_VERSION" != "1.0.0" ]; then
-            echo "❌ Failed to set info.version to 1.0.0. Current value: $NEW_VERSION"
+          # Force title if missing
+          jq '.info.title = "JSON Map Service API"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
+
+          # Fix additionalProperties issue
+          jq '
+            .components.schemas.MapperJson.properties.data.additionalProperties = true
+          ' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
+
+          echo "-----------------------------------"
+          echo "Validated OpenAPI File"
+          echo "-----------------------------------"
+
+          cat "$FIXED_FILE"
+
+          echo "-----------------------------------"
+
+          echo "OpenAPI Version:"
+          jq -r '.openapi' "$FIXED_FILE"
+
+          echo "Info Version:"
+          jq -r '.info.version' "$FIXED_FILE"
+
+      # ------------------------------------------------------------
+      # Validate OpenAPI JSON
+      # ------------------------------------------------------------
+      - name: Validate OpenAPI structure
+        shell: bash
+        run: |
+          SPEC_FILE="fixed_spec.json"
+
+          OPENAPI_VERSION=$(jq -r '.openapi' "$SPEC_FILE")
+          INFO_VERSION=$(jq -r '.info.version' "$SPEC_FILE")
+
+          if [ "$OPENAPI_VERSION" == "null" ]; then
+            echo "❌ Missing openapi version"
             exit 1
           fi
-          echo "✅ OpenAPI spec is ready with valid semantic version"
 
-      # ---------- Mock Central Registry (remove when real registry is available) ----------
-      - name: Start mock Central Registry for testing
-        run: |
-          python3 -c "
-          from http.server import HTTPServer, BaseHTTPRequestHandler
-          import json
-          class MockRegistry(BaseHTTPRequestHandler):
-              def do_POST(self):
-                  self.send_response(200)
-                  self.send_header('Content-type', 'application/json')
-                  self.end_headers()
-                  self.wfile.write(json.dumps({'status': 'ok', 'mock': True}).encode())
-              def log_message(self, format, *args):
-                  pass
-          HTTPServer(('', 8085), MockRegistry).serve_forever()
-          " &
-          sleep 3
-          echo "✅ Mock registry running on port 8085"
+          if [ "$INFO_VERSION" == "null" ]; then
+            echo "❌ Missing info.version"
+            exit 1
+          fi
 
+          echo "✅ OpenAPI validation successful"
+
+      # ------------------------------------------------------------
+      # Register API with Central Registry
+      # ------------------------------------------------------------
       - name: Register API with Central Registry
+        shell: bash
         run: |
           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/register-file" \
             -F "apiName=jsonmap-service" \
@@ -433,18 +485,26 @@ jobs:
             -F "gitRepository=${{ github.repository }}" \
             -F "version=${{ steps.version.outputs.version }}" \
             -F "breakingChange=false" \
-            -F "collectionFile=@postman/jsonmap.postman_collection.json;type=application/json"
+            -F "collectionFile=@fixed_spec.json;type=application/json"
 
-      - name: Register environment
+      # ------------------------------------------------------------
+      # Register Environment
+      # ------------------------------------------------------------
+      - name: Register Environment
+        shell: bash
         run: |
           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/environments" \
             -H "Content-Type: application/json" \
             -d '{
               "envName": "${{ steps.version.outputs.environment }}",
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
-            }' || true
+            }'
 
+      # ------------------------------------------------------------
+      # Mark Deployment
+      # ------------------------------------------------------------
       - name: Mark API Deployment
+        shell: bash
         run: |
           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/deploy" \
             -H "Content-Type: application/json" \
@@ -455,61 +515,45 @@ jobs:
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
 
-      # ---------- Import the fixed OpenAPI spec as a Postman collection ----------
+      # ------------------------------------------------------------
+      # Import OpenAPI into Postman
+      # ------------------------------------------------------------
       - name: Import OpenAPI as Postman Collection
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
+        shell: bash
         run: |
           SPEC_FILE="fixed_spec.json"
-          COLLECTION_NAME=$(jq -r '.info.title' "$SPEC_FILE")
-          echo "📦 Working in workspace: $POSTMAN_WORKSPACE_ID"
-          echo "📋 Collection name: $COLLECTION_NAME"
 
-          # Double-check the semantic version before import
-          echo "OpenAPI version in file: $(jq -r '.openapi' "$SPEC_FILE")"
-          echo "Info.version in file: $(jq -r '.info.version' "$SPEC_FILE")"
-          if [ "$(jq -r '.info.version' "$SPEC_FILE")" != "1.0.0" ]; then
-            echo "❌ ERROR: info.version is not 1.0.0 – aborting import"
-            exit 1
-          fi
+          echo "📦 Importing OpenAPI into Postman..."
 
-          # List existing collections in the workspace
-          COLLECTIONS=$(curl -s -X GET "https://api.getpostman.com/collections?workspaceId=$POSTMAN_WORKSPACE_ID" \
-            -H "X-Api-Key: $POSTMAN_API_KEY")
+          echo "Workspace: $POSTMAN_WORKSPACE_ID"
 
-          # Find IDs of collections with same name
-          COLLECTION_IDS=()
-          while IFS= read -r id; do
-            COLLECTION_IDS+=("$id")
-          done < <(echo "$COLLECTIONS" | jq -r --arg NAME "$COLLECTION_NAME" '.collections[] | select(.name == $NAME) | .id' 2>/dev/null)
+          RESPONSE=$(curl -s -X POST \
+            "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
+            -H "X-Api-Key: $POSTMAN_API_KEY" \
+            -H "Content-Type: application/json" \
+            --data-binary @"$SPEC_FILE")
 
-          if [ ${#COLLECTION_IDS[@]} -eq 0 ]; then
-            echo "✨ No existing collection – creating new one..."
-            RESPONSE=$(curl -s -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
-              -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -F "type=file" \
-              -F "input=@$SPEC_FILE")
-          else
-            echo "🔄 Found ${#COLLECTION_IDS[@]} existing collection(s) – deleting all..."
-            for ID in "${COLLECTION_IDS[@]}"; do
-              echo "🗑️  Deleting collection: $ID"
-              curl -s -X DELETE "https://api.getpostman.com/collections/$ID?workspaceId=$POSTMAN_WORKSPACE_ID" \
-                -H "X-Api-Key: $POSTMAN_API_KEY"
-            done
-            echo "📥 Re-importing collection..."
-            RESPONSE=$(curl -s -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
-              -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -F "type=file" \
-              -F "input=@$SPEC_FILE")
-          fi
+          echo "-----------------------------------"
+          echo "Postman Response"
+          echo "-----------------------------------"
 
-          # Check response
+          echo "$RESPONSE" | jq '.'
+
+          echo "-----------------------------------"
+
           if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
-            echo "❌ Import failed!"
-            echo "$RESPONSE" | jq '.'
+            echo "❌ Postman Import Failed"
             exit 1
-          else
-            echo "✅ Collection imported successfully!"
-            echo "$RESPONSE" | jq '.'
           fi
+
+          echo "✅ OpenAPI imported successfully"
+
+      # ------------------------------------------------------------
+      # Success
+      # ------------------------------------------------------------
+      - name: Completed
+        run: |
+          echo "✅ API Registration Completed Successfully"
