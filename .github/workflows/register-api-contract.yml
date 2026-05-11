@@ -268,97 +268,13 @@ jobs:
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
 
-      # ---------- Postman: Create or Update API SPECIFICATION (appears under "APIs" tab) ----------
-      - name: Create or Update API Specification
-        env:
-          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
-          POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
-        run: |
-          # Check that workspace ID is provided
-          if [ -z "$POSTMAN_WORKSPACE_ID" ]; then
-            echo "❌ POSTMAN_WORKSPACE_ID secret is empty or not set."
-            exit 1
-          fi
-
-          SPEC_FILE="postman/jsonmap.postman_collection.json"
-          if [ ! -f "$SPEC_FILE" ]; then
-            echo "⚠️ No OpenAPI spec file found at $SPEC_FILE – skipping"
-            exit 0
-          fi
-
-          SPEC_NAME="JSON Map Service API"
-          SPEC_VERSION="1.0.0"
-
-          echo "Fetching existing specs in workspace $POSTMAN_WORKSPACE_ID..."
-
-          # Use workspaceId (not workspace) as query parameter
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "https://api.getpostman.com/specs?workspaceId=$POSTMAN_WORKSPACE_ID" \
-            -H "X-Api-Key: $POSTMAN_API_KEY" \
-            -H "Accept: application/vnd.api.v10+json")
-
-          HTTP_BODY=$(echo "$RESPONSE" | head -n -1)
-          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
-
-          echo "HTTP Status: $HTTP_STATUS"
-
-          if [ "$HTTP_STATUS" -ne 200 ]; then
-            echo "❌ Failed to fetch specs. Status: $HTTP_STATUS"
-            echo "Response: $HTTP_BODY"
-            exit 1
-          fi
-
-          # Check if response is valid JSON
-          if ! echo "$HTTP_BODY" | jq empty 2>/dev/null; then
-            echo "❌ Invalid JSON response from Postman API:"
-            echo "$HTTP_BODY"
-            exit 1
-          fi
-
-          SPEC_ID=$(echo "$HTTP_BODY" | jq -r --arg NAME "$SPEC_NAME" '.specs[] | select(.name == $NAME) | .id // empty')
-
-          if [ -z "$SPEC_ID" ]; then
-            echo "Creating new API specification..."
-            CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://api.getpostman.com/specs?workspaceId=$POSTMAN_WORKSPACE_ID" \
-              -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -H "Content-Type: application/json" \
-              -H "Accept: application/vnd.api.v10+json" \
-              -d '{
-                "spec": {
-                  "name": "'"$SPEC_NAME"'",
-                  "version": "'"$SPEC_VERSION"'",
-                  "type": "openapi3_1",
-                  "content": '"$(jq -c . "$SPEC_FILE")"'
-                }
-              }')
-            HTTP_BODY=$(echo "$CREATE_RESPONSE" | head -n -1)
-            HTTP_STATUS=$(echo "$CREATE_RESPONSE" | tail -n1)
-            if [ "$HTTP_STATUS" -ne 200 ] && [ "$HTTP_STATUS" -ne 201 ]; then
-              echo "❌ Failed to create spec. Status: $HTTP_STATUS"
-              echo "Response: $HTTP_BODY"
-              exit 1
-            fi
-            echo "✅ API specification created."
-          else
-            echo "Updating existing API specification (ID: $SPEC_ID)..."
-            NEW_VERSION="1.0.$(date +%s)"
-            UPDATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT "https://api.getpostman.com/specs/$SPEC_ID" \
-              -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -H "Content-Type: application/json" \
-              -H "Accept: application/vnd.api.v10+json" \
-              -d '{
-                "spec": {
-                  "name": "'"$SPEC_NAME"'",
-                  "version": "'"$NEW_VERSION"'",
-                  "type": "openapi3_1",
-                  "content": '"$(jq -c . "$SPEC_FILE")"'
-                }
-              }')
-            HTTP_BODY=$(echo "$UPDATE_RESPONSE" | head -n -1)
-            HTTP_STATUS=$(echo "$UPDATE_RESPONSE" | tail -n1)
-            if [ "$HTTP_STATUS" -ne 200 ] && [ "$HTTP_STATUS" -ne 201 ]; then
-              echo "❌ Failed to update spec. Status: $HTTP_STATUS"
-              echo "Response: $HTTP_BODY"
-              exit 1
-            fi
-            echo "✅ API specification updated to version $NEW_VERSION."
-          fi
+      # ---------- Postman: Publish OpenAPI Spec (creates/updates under "APIs" tab) ----------
+      - name: Publish OpenAPI Spec to Postman
+        uses: aanimesh23/openapi-publish-action@v1
+        with:
+          collectionName: "JSON Map Service API"
+          workspaceId: ${{ secrets.POSTMAN_WORKSPACE_ID }}
+          postmanApiKey: ${{ secrets.POSTMAN_API_KEY }}
+          openApiSpec: "postman/jsonmap.postman_collection.json"
+          # The action automatically increments version on each update if not specified
+          # version: '1.0.0'   # optional, otherwise uses timestamp
