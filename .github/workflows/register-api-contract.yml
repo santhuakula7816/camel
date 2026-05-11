@@ -448,6 +448,7 @@ jobs:
             echo "No existing collection – creating new one via multipart import..."
             curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
+              -F "type=file" \
               -F "file=@$SPEC_FILE"
           else
             echo "Found ${#COLLECTION_IDS[@]} existing collection(s) – deleting all..."
@@ -458,5 +459,6 @@ jobs:
             echo "Re‑importing via multipart..."
             curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
+              -F "type=file" \
               -F "file=@$SPEC_FILE"
           fi
