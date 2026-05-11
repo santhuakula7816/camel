@@ -172,6 +172,161 @@
 #               "environment": "${{ steps.version.outputs.environment }}",
 #               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
 #             }'
+# name: Register JSON Map Service API
+
+# on:
+#   push:
+#     branches: [main, dev, "release/**"]
+#     tags: ["v*"]
+
+# jobs:
+#   register:
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v3
+
+#       - name: Determine environment and version
+#         id: version
+#         run: |
+#           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+#             VERSION="${{ github.ref }}"
+#             VERSION=${VERSION#refs/tags/}
+#             ENVIRONMENT="prod"
+#           elif [[ "${{ github.ref }}" == refs/heads/release/* ]]; then
+#             ENVIRONMENT="uat"
+#             VERSION="${{ github.ref }}"
+#             VERSION=${VERSION#refs/heads/release/}
+#           elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
+#             ENVIRONMENT="staging"
+#             VERSION="main-$(date +%s)"
+#           elif [[ "${{ github.ref }}" == refs/heads/dev ]]; then
+#             ENVIRONMENT="dev"
+#             VERSION="dev-$(date +%s)"
+#           else
+#             ENVIRONMENT="dev"
+#             VERSION="pr-${{ github.event.pull_request.number }}"
+#           fi
+#           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+#           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+#       - name: Verify OpenAPI spec file exists
+#         run: |
+#           if [ ! -f "postman/jsonmap.postman_collection.json" ]; then
+#             echo "❌ ERROR: OpenAPI spec not found at postman/jsonmap.postman_collection.json"
+#             exit 1
+#           fi
+#           echo "✅ OpenAPI spec file found."
+
+#       # ---------- Convert OpenAPI 3.1.0 → 3.0.3 for Postman compatibility ----------
+#       - name: Convert OpenAPI spec to 3.0.3
+#         run: |
+#           cp postman/jsonmap.postman_collection.json openapi_converted.json
+#           # Change the openapi version field to 3.0.3
+#           jq '.openapi = "3.0.3"' openapi_converted.json > temp.json && mv temp.json openapi_converted.json
+#           echo "✅ Converted OpenAPI version to 3.0.3"
+
+#       # ---------- Mock Central Registry (remove when real registry is available) ----------
+#       - name: Start mock Central Registry for testing
+#         run: |
+#           python3 -c "
+#           from http.server import HTTPServer, BaseHTTPRequestHandler
+#           import json
+#           class MockRegistry(BaseHTTPRequestHandler):
+#               def do_POST(self):
+#                   self.send_response(200)
+#                   self.send_header('Content-type', 'application/json')
+#                   self.end_headers()
+#                   self.wfile.write(json.dumps({'status': 'ok', 'mock': True}).encode())
+#               def log_message(self, format, *args):
+#                   pass
+#           HTTPServer(('', 8085), MockRegistry).serve_forever()
+#           " &
+#           sleep 3
+#           echo "✅ Mock registry running on port 8085"
+
+#       - name: Register API with Central Registry
+#         run: |
+#           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/register-file" \
+#             -F "apiName=jsonmap-service" \
+#             -F "description=JSON Mapping Service" \
+#             -F "gitRepository=${{ github.repository }}" \
+#             -F "version=${{ steps.version.outputs.version }}" \
+#             -F "breakingChange=false" \
+#             -F "collectionFile=@postman/jsonmap.postman_collection.json;type=application/json"
+
+#       - name: Register environment
+#         run: |
+#           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/environments" \
+#             -H "Content-Type: application/json" \
+#             -d '{
+#               "envName": "${{ steps.version.outputs.environment }}",
+#               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
+#             }' || true
+
+#       - name: Mark API Deployment
+#         run: |
+#           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/deploy" \
+#             -H "Content-Type: application/json" \
+#             -d '{
+#               "apiName": "jsonmap-service",
+#               "version": "${{ steps.version.outputs.version }}",
+#               "environment": "${{ steps.version.outputs.environment }}",
+#               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
+#             }'
+
+#       # ---------- Direct Postman API call (works with OpenAPI 3.0.x and workspace ID) ----------
+#       - name: Create or Update Postman API Specification
+#         env:
+#           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+#           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
+#         run: |
+#           SPEC_FILE="openapi_converted.json"
+#           SPEC_NAME="JSON Map Service API"
+#           SPEC_VERSION="1.0.0"
+
+#           # Check that workspace ID is provided
+#           if [ -z "$POSTMAN_WORKSPACE_ID" ]; then
+#             echo "❌ POSTMAN_WORKSPACE_ID secret is empty or not set."
+#             exit 1
+#           fi
+
+#           echo "Fetching existing specs in workspace $POSTMAN_WORKSPACE_ID..."
+#           RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "https://api.getpostman.com/specs?workspaceId=$POSTMAN_WORKSPACE_ID" \
+#             -H "X-Api-Key: $POSTMAN_API_KEY" \
+#             -H "Accept: application/vnd.api.v10+json")
+#           HTTP_BODY=$(echo "$RESPONSE" | head -n -1)
+#           HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+
+#           if [ "$HTTP_STATUS" -ne 200 ]; then
+#             echo "❌ Failed to fetch specs. Status: $HTTP_STATUS"
+#             echo "Response: $HTTP_BODY"
+#             exit 1
+#           fi
+
+#           SPEC_ID=$(echo "$HTTP_BODY" | jq -r --arg NAME "$SPEC_NAME" '.specs[] | select(.name == $NAME) | .id // empty')
+
+#           if [ -z "$SPEC_ID" ]; then
+#             echo "Creating new API specification..."
+#             curl -X POST "https://api.getpostman.com/specs?workspaceId=$POSTMAN_WORKSPACE_ID" \
+#               -H "Accept: application/vnd.api.v10+json" \
+#               -H "X-Api-Key: $POSTMAN_API_KEY" \
+#               -F "name=$SPEC_NAME" \
+#               -F "version=$SPEC_VERSION" \
+#               -F "type=openapi3_0" \
+#               -F "files=@$SPEC_FILE"
+#           else
+#             echo "Updating existing API specification (ID: $SPEC_ID)..."
+#             NEW_VERSION="1.0.$(date +%s)"
+#             curl -X PUT "https://api.getpostman.com/specs/$SPEC_ID" \
+#               -H "Accept: application/vnd.api.v10+json" \
+#               -H "X-Api-Key: $POSTMAN_API_KEY" \
+#               -F "name=$SPEC_NAME" \
+#               -F "version=$NEW_VERSION" \
+#               -F "type=openapi3_0" \
+#               -F "files=@$SPEC_FILE"
+#           fi
 name: Register JSON Map Service API
 
 on:
@@ -218,14 +373,6 @@ jobs:
             exit 1
           fi
           echo "✅ OpenAPI spec file found."
-
-      # ---------- Convert OpenAPI 3.1.0 → 3.0.3 for Postman compatibility ----------
-      - name: Convert OpenAPI spec to 3.0.3
-        run: |
-          cp postman/jsonmap.postman_collection.json openapi_converted.json
-          # Change the openapi version field to 3.0.3
-          jq '.openapi = "3.0.3"' openapi_converted.json > temp.json && mv temp.json openapi_converted.json
-          echo "✅ Converted OpenAPI version to 3.0.3"
 
       # ---------- Mock Central Registry (remove when real registry is available) ----------
       - name: Start mock Central Registry for testing
@@ -276,54 +423,44 @@ jobs:
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
 
-      # ---------- Direct Postman API call (works with OpenAPI 3.0.x and workspace ID) ----------
-      - name: Create or Update Postman API Specification
+      # ---------- Import OpenAPI as Postman Collection (appears under "Collections" tab) ----------
+      - name: Import OpenAPI as Postman Collection
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
-          POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         run: |
-          SPEC_FILE="openapi_converted.json"
-          SPEC_NAME="JSON Map Service API"
-          SPEC_VERSION="1.0.0"
+          SPEC_FILE="postman/jsonmap.postman_collection.json"
+          # Use Postman's import endpoint to create/update collection from OpenAPI
+          # First, try to find existing collection by name
+          COLLECTION_NAME=$(jq -r '.info.title' "$SPEC_FILE")
+          echo "Looking for existing collection: $COLLECTION_NAME"
 
-          # Check that workspace ID is provided
-          if [ -z "$POSTMAN_WORKSPACE_ID" ]; then
-            echo "❌ POSTMAN_WORKSPACE_ID secret is empty or not set."
-            exit 1
-          fi
+          COLLECTIONS=$(curl -s -X GET "https://api.getpostman.com/collections" \
+            -H "X-Api-Key: $POSTMAN_API_KEY")
 
-          echo "Fetching existing specs in workspace $POSTMAN_WORKSPACE_ID..."
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "https://api.getpostman.com/specs?workspaceId=$POSTMAN_WORKSPACE_ID" \
-            -H "X-Api-Key: $POSTMAN_API_KEY" \
-            -H "Accept: application/vnd.api.v10+json")
-          HTTP_BODY=$(echo "$RESPONSE" | head -n -1)
-          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+          COLLECTION_ID=$(echo "$COLLECTIONS" | jq -r --arg NAME "$COLLECTION_NAME" \
+            '.collections[] | select(.name == $NAME) | .id')
 
-          if [ "$HTTP_STATUS" -ne 200 ]; then
-            echo "❌ Failed to fetch specs. Status: $HTTP_STATUS"
-            echo "Response: $HTTP_BODY"
-            exit 1
-          fi
-
-          SPEC_ID=$(echo "$HTTP_BODY" | jq -r --arg NAME "$SPEC_NAME" '.specs[] | select(.name == $NAME) | .id // empty')
-
-          if [ -z "$SPEC_ID" ]; then
-            echo "Creating new API specification..."
-            curl -X POST "https://api.getpostman.com/specs?workspaceId=$POSTMAN_WORKSPACE_ID" \
-              -H "Accept: application/vnd.api.v10+json" \
+          if [ -z "$COLLECTION_ID" ]; then
+            echo "No existing collection – creating new one via import..."
+            # Import OpenAPI spec (this creates a collection)
+            curl -X POST "https://api.getpostman.com/import/openapi" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -F "name=$SPEC_NAME" \
-              -F "version=$SPEC_VERSION" \
-              -F "type=openapi3_0" \
-              -F "files=@$SPEC_FILE"
+              -H "Content-Type: application/json" \
+              -d '{
+                "type": "file",
+                "data": '"$(jq -c . "$SPEC_FILE")"'
+              }'
           else
-            echo "Updating existing API specification (ID: $SPEC_ID)..."
-            NEW_VERSION="1.0.$(date +%s)"
-            curl -X PUT "https://api.getpostman.com/specs/$SPEC_ID" \
-              -H "Accept: application/vnd.api.v10+json" \
+            echo "Collection exists (ID: $COLLECTION_ID) – updating via import (will replace)..."
+            # To update, we need to delete existing and re-import, or use PUT /collections/{id} with converted format.
+            # Simpler: delete and re-import
+            curl -X DELETE "https://api.getpostman.com/collections/$COLLECTION_ID" \
+              -H "X-Api-Key: $POSTMAN_API_KEY"
+            curl -X POST "https://api.getpostman.com/import/openapi" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -F "name=$SPEC_NAME" \
-              -F "version=$NEW_VERSION" \
-              -F "type=openapi3_0" \
-              -F "files=@$SPEC_FILE"
+              -H "Content-Type: application/json" \
+              -d '{
+                "type": "file",
+                "data": '"$(jq -c . "$SPEC_FILE")"'
+              }'
           fi
