@@ -274,6 +274,12 @@ jobs:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         run: |
+          # Check that workspace ID is provided
+          if [ -z "$POSTMAN_WORKSPACE_ID" ]; then
+            echo "❌ POSTMAN_WORKSPACE_ID secret is empty or not set."
+            exit 1
+          fi
+
           SPEC_FILE="postman/jsonmap.postman_collection.json"
           if [ ! -f "$SPEC_FILE" ]; then
             echo "⚠️ No OpenAPI spec file found at $SPEC_FILE – skipping"
@@ -285,8 +291,8 @@ jobs:
 
           echo "Fetching existing specs in workspace $POSTMAN_WORKSPACE_ID..."
 
-          # Make the API call and capture HTTP status and body
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "https://api.getpostman.com/specs?workspace=$POSTMAN_WORKSPACE_ID" \
+          # Use workspaceId (not workspace) as query parameter
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "https://api.getpostman.com/specs?workspaceId=$POSTMAN_WORKSPACE_ID" \
             -H "X-Api-Key: $POSTMAN_API_KEY" \
             -H "Accept: application/vnd.api.v10+json")
 
@@ -301,7 +307,7 @@ jobs:
             exit 1
           fi
 
-          # Check if response is valid JSON and contains specs
+          # Check if response is valid JSON
           if ! echo "$HTTP_BODY" | jq empty 2>/dev/null; then
             echo "❌ Invalid JSON response from Postman API:"
             echo "$HTTP_BODY"
@@ -312,7 +318,7 @@ jobs:
 
           if [ -z "$SPEC_ID" ]; then
             echo "Creating new API specification..."
-            CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://api.getpostman.com/specs" \
+            CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://api.getpostman.com/specs?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
               -H "Content-Type: application/json" \
               -H "Accept: application/vnd.api.v10+json" \
