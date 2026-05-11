@@ -424,46 +424,39 @@ jobs:
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
 
-      # ---------- Import OpenAPI as Postman Collection (handles duplicates) ----------
+      # ---------- Import OpenAPI as Postman Collection (multipart upload, workspace aware) ----------
       - name: Import OpenAPI as Postman Collection
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+          POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         run: |
           SPEC_FILE="postman/jsonmap.postman_collection.json"
           COLLECTION_NAME=$(jq -r '.info.title' "$SPEC_FILE")
-          echo "Looking for existing collections named: $COLLECTION_NAME"
+          echo "Working in workspace: $POSTMAN_WORKSPACE_ID"
 
-          COLLECTIONS=$(curl -s -X GET "https://api.getpostman.com/collections" \
+          # List existing collections in the workspace
+          COLLECTIONS=$(curl -s -X GET "https://api.getpostman.com/collections?workspaceId=$POSTMAN_WORKSPACE_ID" \
             -H "X-Api-Key: $POSTMAN_API_KEY")
 
-          # Read all IDs with matching name into an array
+          # Find IDs of collections with same name
           COLLECTION_IDS=()
           while IFS= read -r id; do
             COLLECTION_IDS+=("$id")
           done < <(echo "$COLLECTIONS" | jq -r --arg NAME "$COLLECTION_NAME" '.collections[] | select(.name == $NAME) | .id')
 
           if [ ${#COLLECTION_IDS[@]} -eq 0 ]; then
-            echo "No existing collection – creating new one via import..."
-            curl -X POST "https://api.getpostman.com/import/openapi" \
+            echo "No existing collection – creating new one via multipart import..."
+            curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -H "Content-Type: application/json" \
-              -d '{
-                "type": "file",
-                "data": '"$(jq -c . "$SPEC_FILE")"'
-              }'
+              -F "file=@$SPEC_FILE"
           else
-            echo "Found ${#COLLECTION_IDS[@]} existing collection(s) with name '$COLLECTION_NAME'. Deleting all..."
+            echo "Found ${#COLLECTION_IDS[@]} existing collection(s) – deleting all..."
             for ID in "${COLLECTION_IDS[@]}"; do
-              echo "Deleting collection ID: $ID"
-              curl -X DELETE "https://api.getpostman.com/collections/$ID" \
+              curl -X DELETE "https://api.getpostman.com/collections/$ID?workspaceId=$POSTMAN_WORKSPACE_ID" \
                 -H "X-Api-Key: $POSTMAN_API_KEY"
             done
-            echo "All matching collections deleted. Creating new one via import..."
-            curl -X POST "https://api.getpostman.com/import/openapi" \
+            echo "Re‑importing via multipart..."
+            curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -H "Content-Type: application/json" \
-              -d '{
-                "type": "file",
-                "data": '"$(jq -c . "$SPEC_FILE")"'
-              }'
+              -F "file=@$SPEC_FILE"
           fi
