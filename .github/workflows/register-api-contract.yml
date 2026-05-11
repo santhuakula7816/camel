@@ -553,10 +553,6 @@ jobs:
 
           echo "✅ OpenAPI spec generated"
 
-          echo "--------------------------------------"
-          cat fixed_spec.json
-          echo "--------------------------------------"
-
       # ------------------------------------------------------------
       # Validate OpenAPI Spec
       # ------------------------------------------------------------
@@ -632,8 +628,6 @@ jobs:
 
           echo "✅ Mock Registry Started"
 
-          cat mock_registry.log
-
       # ------------------------------------------------------------
       # Register API with Central Registry
       # ------------------------------------------------------------
@@ -696,18 +690,10 @@ jobs:
         run: |
           echo "📦 Importing OpenAPI into Postman..."
 
-          echo "--------------------------------------"
-          echo "OpenAPI Spec"
-          echo "--------------------------------------"
-
-          cat fixed_spec.json
-
-          echo "--------------------------------------"
-
           RESPONSE=$(curl --silent --location \
-            --request POST "https://api.getpostman.com/imports?workspace=$POSTMAN_WORKSPACE_ID" \
+            --request POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
             --header "X-Api-Key: $POSTMAN_API_KEY" \
-            --form "type=openapi" \
+            --form "type=file" \
             --form "input=@fixed_spec.json")
 
           echo "--------------------------------------"
@@ -718,8 +704,17 @@ jobs:
 
           echo "--------------------------------------"
 
+          # Fail if .error exists
           if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
             echo "❌ Postman import failed"
+            exit 1
+          fi
+
+          # Fail if status >= 400
+          STATUS=$(echo "$RESPONSE" | jq -r '.status // empty')
+
+          if [[ "$STATUS" =~ ^[0-9]+$ ]] && [ "$STATUS" -ge 400 ]; then
+            echo "❌ Postman API returned HTTP error"
             exit 1
           fi
 
