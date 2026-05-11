@@ -327,7 +327,6 @@
 #               -F "type=openapi3_0" \
 #               -F "files=@$SPEC_FILE"
 #           fi
-
 name: Register JSON Map Service API
 
 on:
@@ -375,12 +374,14 @@ jobs:
           fi
           echo "✅ OpenAPI spec file found."
 
-      # ---------- Convert OpenAPI 3.1.0 → 3.0.3 for Postman compatibility ----------
-      - name: Convert OpenAPI spec to 3.0.3
+      # ---------- Convert OpenAPI 3.1.0 → 3.0.3 and fix info.version ----------
+      - name: Convert OpenAPI for Postman compatibility
         run: |
-          cp postman/jsonmap.postman_collection.json openapi_converted.json
-          jq '.openapi = "3.0.3"' openapi_converted.json > temp.json && mv temp.json openapi_converted.json
-          echo "✅ Converted OpenAPI version to 3.0.3"
+          cp postman/jsonmap.postman_collection.json openapi_spec.json
+          jq '.openapi = "3.0.3" | .info.version = "1.0.0"' openapi_spec.json > temp.json && mv temp.json openapi_spec.json
+          echo "✅ Converted OpenAPI to 3.0.3 and info.version to 1.0.0"
+          echo "Verification:"
+          jq '{openapi, info: {title, version}}' openapi_spec.json
 
       # ---------- Mock Central Registry (remove when real registry is available) ----------
       - name: Start mock Central Registry for testing
@@ -431,20 +432,7 @@ jobs:
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
 
-      # ---------- Import OpenAPI as Postman Collection (using converted 3.0.3 file) ----------
-      - name: Convert OpenAPI 3.1.0 to 3.0.3 for Postman
-        run: |
-          cp postman/jsonmap.postman_collection.json openapi_spec.json
-          jq '.openapi = "3.0.3"' openapi_spec.json > temp.json && mv temp.json openapi_spec.json
-          echo "✅ Converted OpenAPI to 3.0.3"
-          echo "Verifying conversion - First 10 lines:"
-          head -c 500 openapi_spec.json
-          echo ""
-          echo "OpenAPI version:"
-          jq '.openapi' openapi_spec.json
-          echo "Info section:"
-          jq '.info' openapi_spec.json
-
+      # ---------- Import OpenAPI as Postman Collection (using converted file) ----------
       - name: Import OpenAPI as Postman Collection
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
@@ -465,10 +453,9 @@ jobs:
           done < <(echo "$COLLECTIONS" | jq -r --arg NAME "$COLLECTION_NAME" '.collections[] | select(.name == $NAME) | .id')
 
           if [ ${#COLLECTION_IDS[@]} -eq 0 ]; then
-            echo "No existing collection – creating new one via import..."
+            echo "No existing collection – creating new one..."
             curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -F "type=file" \
               -F "input=@$SPEC_FILE"
           else
             echo "Found ${#COLLECTION_IDS[@]} existing collection(s) – deleting all..."
@@ -479,6 +466,5 @@ jobs:
             echo "Re‑importing collection..."
             curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -F "type=file" \
               -F "input=@$SPEC_FILE"
           fi
