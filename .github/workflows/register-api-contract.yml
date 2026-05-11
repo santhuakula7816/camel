@@ -362,6 +362,21 @@ jobs:
           sudo apt-get install -y jq
 
       # ------------------------------------------------------------
+      # Setup Node.js
+      # ------------------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ------------------------------------------------------------
+      # Install OpenAPI Converter
+      # ------------------------------------------------------------
+      - name: Install OpenAPI Converter
+        run: |
+          npm install -g openapi-to-postmanv2
+
+      # ------------------------------------------------------------
       # Determine Environment and Version
       # ------------------------------------------------------------
       - name: Determine environment and version
@@ -396,7 +411,7 @@ jobs:
           echo "Version: $VERSION"
 
       # ------------------------------------------------------------
-      # Generate Clean OpenAPI Spec
+      # Generate OpenAPI Spec
       # ------------------------------------------------------------
       - name: Generate OpenAPI spec
         shell: bash
@@ -539,7 +554,9 @@ jobs:
                     },
                     "data": {
                       "type": "object",
-                      "additionalProperties": true,
+                      "additionalProperties": {
+                        "type": "string"
+                      },
                       "example": {
                         "name": "sample"
                       }
@@ -559,6 +576,14 @@ jobs:
       - name: Validate OpenAPI structure
         shell: bash
         run: |
+          echo "--------------------------------------"
+          echo "OpenAPI Spec"
+          echo "--------------------------------------"
+
+          cat fixed_spec.json | jq '.'
+
+          echo "--------------------------------------"
+
           OPENAPI_VERSION=$(jq -r '.openapi' fixed_spec.json)
           INFO_VERSION=$(jq -r '.info.version' fixed_spec.json)
 
@@ -576,6 +601,53 @@ jobs:
           fi
 
           echo "✅ OpenAPI validation successful"
+
+      # ------------------------------------------------------------
+      # Convert OpenAPI → Postman Collection
+      # ------------------------------------------------------------
+      - name: Convert OpenAPI to Postman Collection
+        shell: bash
+        run: |
+          echo "📦 Converting OpenAPI to Postman Collection..."
+
+          openapi2postmanv2 \
+            -s fixed_spec.json \
+            -o postman_collection.json \
+            -p
+
+          echo "--------------------------------------"
+          echo "Generated Postman Collection"
+          echo "--------------------------------------"
+
+          cat postman_collection.json | jq '.info'
+
+          echo "--------------------------------------"
+
+          if [ ! -f "postman_collection.json" ]; then
+            echo "❌ Conversion failed"
+            exit 1
+          fi
+
+          echo "✅ Postman collection generated"
+
+      # ------------------------------------------------------------
+      # Create Postman Payload
+      # ------------------------------------------------------------
+      - name: Create Postman Payload
+        shell: bash
+        run: |
+          jq -n \
+            --slurpfile collection postman_collection.json \
+            '{collection: $collection[0]}' \
+            > postman_payload.json
+
+          echo "--------------------------------------"
+          echo "Payload Preview"
+          echo "--------------------------------------"
+
+          cat postman_payload.json | jq '.collection.info'
+
+          echo "--------------------------------------"
 
       # ------------------------------------------------------------
       # Start Mock Central Registry
@@ -598,7 +670,6 @@ jobs:
                   print("POST Request Received")
                   print("==============================")
                   print("Path:", self.path)
-                  print("Headers:", self.headers)
                   print("Body:", body)
                   print("==============================\n")
 
@@ -641,7 +712,7 @@ jobs:
             -F "gitRepository=${{ github.repository }}" \
             -F "version=${{ steps.version.outputs.version }}" \
             -F "breakingChange=false" \
-            -F "collectionFile=@fixed_spec.json;type=application/json"
+            -F "collectionFile=@postman_collection.json;type=application/json"
 
           echo "✅ API Registered"
 
@@ -680,21 +751,21 @@ jobs:
           echo "✅ Deployment Marked"
 
       # ------------------------------------------------------------
-      # Import OpenAPI into Postman
+      # Upload Collection to Postman
       # ------------------------------------------------------------
-      - name: Import OpenAPI as Postman Collection
+      - name: Upload Collection to Postman
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         shell: bash
         run: |
-          echo "📦 Importing OpenAPI into Postman..."
+          echo "📦 Uploading Collection to Postman..."
 
           RESPONSE=$(curl --silent --location \
-            --request POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
-            --header "X-Api-Key: $POSTMAN_API_KEY" \
-            --form "type=file" \
-            --form "input=@fixed_spec.json")
+            --request POST "https://api.getpostman.com/collections?workspace=${POSTMAN_WORKSPACE_ID}" \
+            --header "X-Api-Key: ${POSTMAN_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data @postman_payload.json)
 
           echo "--------------------------------------"
           echo "Postman Response"
@@ -704,21 +775,20 @@ jobs:
 
           echo "--------------------------------------"
 
-          # Fail if .error exists
           if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
-            echo "❌ Postman import failed"
+            echo "❌ Postman upload failed"
             exit 1
           fi
 
-          # Fail if status >= 400
-          STATUS=$(echo "$RESPONSE" | jq -r '.status // empty')
+          COLLECTION_ID=$(echo "$RESPONSE" | jq -r '.collection.uid // empty')
 
-          if [[ "$STATUS" =~ ^[0-9]+$ ]] && [ "$STATUS" -ge 400 ]; then
-            echo "❌ Postman API returned HTTP error"
+          if [ -z "$COLLECTION_ID" ]; then
+            echo "❌ Collection ID missing"
             exit 1
           fi
 
-          echo "✅ OpenAPI imported successfully into Postman"
+          echo "✅ Collection uploaded successfully"
+          echo "Collection ID: $COLLECTION_ID"
 
       # ------------------------------------------------------------
       # Workflow Completed
@@ -726,4 +796,3 @@ jobs:
       - name: Workflow Completed
         run: |
           echo "🎉 API Registration Workflow Completed Successfully"
-
