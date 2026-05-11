@@ -445,8 +445,8 @@ jobs:
           done < <(echo "$COLLECTIONS" | jq -r --arg NAME "$COLLECTION_NAME" '.collections[] | select(.name == $NAME) | .id')
 
           if [ ${#COLLECTION_IDS[@]} -eq 0 ]; then
-            echo "No existing collection – creating new one via multipart import..."
-            curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
+            echo "No existing collection – creating new one..."
+            curl -X POST "https://api.getpostman.com/import/postman?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
               -F "type=file" \
               -F "input=@$SPEC_FILE"
@@ -456,8 +456,8 @@ jobs:
               curl -X DELETE "https://api.getpostman.com/collections/$ID?workspaceId=$POSTMAN_WORKSPACE_ID" \
                 -H "X-Api-Key: $POSTMAN_API_KEY"
             done
-            echo "Re‑importing via multipart..."
-            curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
+            echo "Re‑importing collection..."
+            curl -X POST "https://api.getpostman.com/import/postman?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
               -F "type=file" \
               -F "input=@$SPEC_FILE"
