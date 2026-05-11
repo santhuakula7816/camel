@@ -462,7 +462,7 @@ jobs:
           INFO_VERSION=$(jq -r '.info.version' "$SPEC_FILE")
 
           if [ "$OPENAPI_VERSION" == "null" ]; then
-            echo "❌ Missing openapi version"
+            echo "❌  Missing openapi version"
             exit 1
           fi
 
