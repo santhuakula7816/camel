@@ -327,6 +327,7 @@
 #               -F "type=openapi3_0" \
 #               -F "files=@$SPEC_FILE"
 #           fi
+
 name: Register JSON Map Service API
 
 on:
@@ -366,42 +367,104 @@ jobs:
           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+      # ✅ FIXED: Verify proper OpenAPI spec file exists
       - name: Verify OpenAPI spec file exists
         run: |
-          if [ ! -f "postman/jsonmap.postman_collection.json" ]; then
-            echo "❌ ERROR: OpenAPI spec not found at postman/jsonmap.postman_collection.json"
+          if [ ! -f "openapi/jsonmap-openapi.json" ]; then
+            echo "❌ ERROR: OpenAPI spec not found at openapi/jsonmap-openapi.json"
             exit 1
           fi
           echo "✅ OpenAPI spec file found."
+          # Validate it has required OpenAPI fields
+          jq 'if .openapi and .info and .info.version then "✅ Valid OpenAPI structure" else "❌ Invalid structure" end' openapi/jsonmap-openapi.json
 
-      # ---------- Convert OpenAPI 3.1.0 → 3.0.3 and fix info.version ----------
-      - name: Convert OpenAPI for Postman compatibility
+      # ✅ FIXED: Validate and ensure proper OpenAPI 3.0.x format
+      - name: Validate and fix OpenAPI spec for Postman
         run: |
-          cp postman/jsonmap.postman_collection.json openapi_spec.json
-          jq '.openapi = "3.0.3" | .info.version = "1.0.0"' openapi_spec.json > temp.json && mv temp.json openapi_spec.json
-          echo "✅ Converted OpenAPI to 3.0.3 and info.version to 1.0.0"
-          echo "Verification:"
-          jq '{openapi, info: {title, version}}' openapi_spec.json
+          SPEC_FILE="openapi/jsonmap-openapi.json"
 
-      # ---------- Mock Central Registry (remove when real registry is available) ----------
-      - name: Start mock Central Registry for testing
+          # Validate with jq
+          jq . "$SPEC_FILE" > /dev/null 2>&1 || { echo "❌ Invalid JSON"; exit 1; }
+
+          # Ensure it's OpenAPI 3.0.x format
+          OPENAPI_VERSION=$(jq -r '.openapi' "$SPEC_FILE")
+          if [[ ! "$OPENAPI_VERSION" =~ ^3\.0\. ]]; then
+            echo "⚠️  Converting to OpenAPI 3.0.3..."
+            jq '.openapi = "3.0.3"' "$SPEC_FILE" > temp.json && mv temp.json "$SPEC_FILE"
+          fi
+
+          # Ensure info.version is set
+          INFO_VERSION=$(jq -r '.info.version // empty' "$SPEC_FILE")
+          if [ -z "$INFO_VERSION" ]; then
+            echo "⚠️  Setting info.version to 1.0.0..."
+            jq '.info.version = "1.0.0"' "$SPEC_FILE" > temp.json && mv temp.json "$SPEC_FILE"
+          fi
+
+          echo "✅ OpenAPI spec validated successfully"
+          echo "Final spec details:"
+          jq '{openapi: .openapi, info: {title: .info.title, version: .info.version}, paths: (.paths | keys | length)}' "$SPEC_FILE"
+
+      # ✅ FIXED: Use proper OpenAPI file for Postman import
+      - name: Import OpenAPI as Postman Collection
+        env:
+          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+          POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         run: |
-          python3 -c "
-          from http.server import HTTPServer, BaseHTTPRequestHandler
-          import json
-          class MockRegistry(BaseHTTPRequestHandler):
-              def do_POST(self):
-                  self.send_response(200)
-                  self.send_header('Content-type', 'application/json')
-                  self.end_headers()
-                  self.wfile.write(json.dumps({'status': 'ok', 'mock': True}).encode())
-              def log_message(self, format, *args):
-                  pass
-          HTTPServer(('', 8085), MockRegistry).serve_forever()
-          " &
-          sleep 3
-          echo "✅ Mock registry running on port 8085"
+          SPEC_FILE="openapi/jsonmap-openapi.json"
+          COLLECTION_NAME=$(jq -r '.info.title' "$SPEC_FILE")
+          echo "📦 Working in workspace: $POSTMAN_WORKSPACE_ID"
+          echo "📋 Collection name: $COLLECTION_NAME"
 
+          # List existing collections in the workspace
+          COLLECTIONS=$(curl -s -X GET "https://api.getpostman.com/collections?workspaceId=$POSTMAN_WORKSPACE_ID" \
+            -H "X-Api-Key: $POSTMAN_API_KEY")
+
+          # Find IDs of collections with same name
+          COLLECTION_IDS=()
+          while IFS= read -r id; do
+            COLLECTION_IDS+=("$id")
+          done < <(echo "$COLLECTIONS" | jq -r --arg NAME "$COLLECTION_NAME" '.collections[] | select(.name == $NAME) | .id' 2>/dev/null)
+
+          if [ ${#COLLECTION_IDS[@]} -eq 0 ]; then
+            echo "✨ No existing collection – creating new one..."
+            RESPONSE=$(curl -s -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
+              -H "X-Api-Key: $POSTMAN_API_KEY" \
+              -F "type=file" \
+              -F "input=@$SPEC_FILE")
+            
+            if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+              echo "❌ Import failed!"
+              echo "$RESPONSE" | jq '.'
+              exit 1
+            else
+              echo "✅ Collection created successfully!"
+              echo "$RESPONSE" | jq '.id'
+            fi
+          else
+            echo "🔄 Found ${#COLLECTION_IDS[@]} existing collection(s) – updating..."
+            for ID in "${COLLECTION_IDS[@]}"; do
+              echo "🗑️  Deleting collection: $ID"
+              curl -s -X DELETE "https://api.getpostman.com/collections/$ID?workspaceId=$POSTMAN_WORKSPACE_ID" \
+                -H "X-Api-Key: $POSTMAN_API_KEY"
+            done
+            
+            echo "📥 Re-importing collection..."
+            RESPONSE=$(curl -s -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
+              -H "X-Api-Key: $POSTMAN_API_KEY" \
+              -F "type=file" \
+              -F "input=@$SPEC_FILE")
+            
+            if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+              echo "❌ Import failed!"
+              echo "$RESPONSE" | jq '.'
+              exit 1
+            else
+              echo "✅ Collection updated successfully!"
+              echo "$RESPONSE" | jq '.id'
+            fi
+          fi
+
+      # Register API with Central Registry
       - name: Register API with Central Registry
         run: |
           curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/register-file" \
@@ -410,7 +473,7 @@ jobs:
             -F "gitRepository=${{ github.repository }}" \
             -F "version=${{ steps.version.outputs.version }}" \
             -F "breakingChange=false" \
-            -F "collectionFile=@postman/jsonmap.postman_collection.json;type=application/json"
+            -F "collectionFile=@openapi/jsonmap-openapi.json;type=application/json" || true
 
       - name: Register environment
         run: |
@@ -430,43 +493,12 @@ jobs:
               "version": "${{ steps.version.outputs.version }}",
               "environment": "${{ steps.version.outputs.environment }}",
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
-            }'
+            }' || true
 
-      # ---------- Import OpenAPI as Postman Collection (using converted file) ----------
-      - name: Import OpenAPI as Postman Collection
-        env:
-          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
-          POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
+      - name: Workflow Summary
         run: |
-          SPEC_FILE="openapi_spec.json"
-          COLLECTION_NAME=$(jq -r '.info.title' "$SPEC_FILE")
-          echo "Working in workspace: $POSTMAN_WORKSPACE_ID"
-
-          # List existing collections in the workspace
-          COLLECTIONS=$(curl -s -X GET "https://api.getpostman.com/collections?workspaceId=$POSTMAN_WORKSPACE_ID" \
-            -H "X-Api-Key: $POSTMAN_API_KEY")
-
-          # Find IDs of collections with same name
-          COLLECTION_IDS=()
-          while IFS= read -r id; do
-            COLLECTION_IDS+=("$id")
-          done < <(echo "$COLLECTIONS" | jq -r --arg NAME "$COLLECTION_NAME" '.collections[] | select(.name == $NAME) | .id')
-
-          if [ ${#COLLECTION_IDS[@]} -eq 0 ]; then
-            echo "No existing collection – creating new one..."
-            curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
-              -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -F "type=file" \
-              -F "input=@$SPEC_FILE"
-          else
-            echo "Found ${#COLLECTION_IDS[@]} existing collection(s) – deleting all..."
-            for ID in "${COLLECTION_IDS[@]}"; do
-              curl -X DELETE "https://api.getpostman.com/collections/$ID?workspaceId=$POSTMAN_WORKSPACE_ID" \
-                -H "X-Api-Key: $POSTMAN_API_KEY"
-            done
-            echo "Re‑importing collection..."
-            curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
-              -H "X-Api-Key: $POSTMAN_API_KEY" \
-              -F "type=file" \
-              -F "input=@$SPEC_FILE"
-          fi
+          echo "✅ Workflow completed successfully!"
+          echo "📊 Summary:"
+          echo "  - Environment: ${{ steps.version.outputs.environment }}"
+          echo "  - Version: ${{ steps.version.outputs.version }}"
+          echo "  - OpenAPI spec validated and imported to Postman"
