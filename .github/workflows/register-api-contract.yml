@@ -456,7 +456,7 @@ jobs:
             curl -X POST "https://api.getpostman.com/collections?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
               -H "Content-Type: application/json" \
-              -d @$SPEC_FILE
+              -d "$(jq -c '{collection: .}' $SPEC_FILE)"
           else
             echo "Found ${#COLLECTION_IDS[@]} existing collection(s) – deleting all..."
             for ID in "${COLLECTION_IDS[@]}"; do
@@ -467,5 +467,5 @@ jobs:
             curl -X POST "https://api.getpostman.com/collections?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
               -H "Content-Type: application/json" \
-              -d @$SPEC_FILE
+              -d "$(jq -c '{collection: .}' $SPEC_FILE)"
           fi
