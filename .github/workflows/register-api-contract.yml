@@ -298,7 +298,7 @@ jobs:
           node-version: 20
 
       # ------------------------------------------------------------
-      # Install OpenAPI to Postman Converter
+      # Install OpenAPI Converter
       # ------------------------------------------------------------
       - name: Install OpenAPI Converter
         run: |
@@ -340,6 +340,169 @@ jobs:
           echo "Version: $VERSION"
 
       # ------------------------------------------------------------
+      # Generate OpenAPI Spec Dynamically
+      # ------------------------------------------------------------
+      - name: Generate OpenAPI spec
+        shell: bash
+        run: |
+
+          mkdir -p openapi
+
+          cat > openapi/fixed_spec.json << 'EOF'
+          {
+            "openapi": "3.0.3",
+            "info": {
+              "title": "JSON Map Service API",
+              "version": "1.0.0",
+              "description": "API for managing JSON mapping data"
+            },
+            "servers": [
+              {
+                "url": "http://localhost:8084",
+                "description": "Local Development Server"
+              }
+            ],
+            "paths": {
+              "/json/getAll": {
+                "get": {
+                  "tags": [
+                    "mapper-json-controller"
+                  ],
+                  "summary": "Get all JSON mappings",
+                  "operationId": "getAllLocations",
+                  "responses": {
+                    "200": {
+                      "description": "List of all JSON mappings",
+                      "content": {
+                        "application/json": {
+                          "schema": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/MapperJson"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "/json/create": {
+                "post": {
+                  "tags": [
+                    "mapper-json-controller"
+                  ],
+                  "summary": "Create JSON mapping",
+                  "operationId": "createRack",
+                  "requestBody": {
+                    "required": true,
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "$ref": "#/components/schemas/MapperJson"
+                        }
+                      }
+                    }
+                  },
+                  "responses": {
+                    "200": {
+                      "description": "JSON mapping created successfully",
+                      "content": {
+                        "application/json": {
+                          "schema": {
+                            "$ref": "#/components/schemas/MapperJson"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "/json/{id}": {
+                "put": {
+                  "tags": [
+                    "mapper-json-controller"
+                  ],
+                  "summary": "Update JSON mapping",
+                  "operationId": "update",
+                  "parameters": [
+                    {
+                      "name": "id",
+                      "in": "path",
+                      "required": true,
+                      "schema": {
+                        "type": "string"
+                      }
+                    }
+                  ],
+                  "requestBody": {
+                    "required": true,
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "$ref": "#/components/schemas/MapperJson"
+                        }
+                      }
+                    }
+                  },
+                  "responses": {
+                    "200": {
+                      "description": "JSON mapping updated successfully"
+                    }
+                  }
+                },
+                "delete": {
+                  "tags": [
+                    "mapper-json-controller"
+                  ],
+                  "summary": "Delete JSON mapping",
+                  "operationId": "delete",
+                  "parameters": [
+                    {
+                      "name": "id",
+                      "in": "path",
+                      "required": true,
+                      "schema": {
+                        "type": "string"
+                      }
+                    }
+                  ],
+                  "responses": {
+                    "200": {
+                      "description": "JSON mapping deleted successfully"
+                    }
+                  }
+                }
+              }
+            },
+            "components": {
+              "schemas": {
+                "MapperJson": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "example": "12345"
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "example": {
+                        "name": "sample"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          EOF
+
+          echo "✅ OpenAPI spec generated dynamically"
+
+      # ------------------------------------------------------------
       # Validate OpenAPI Spec
       # ------------------------------------------------------------
       - name: Validate OpenAPI spec
@@ -371,9 +534,9 @@ jobs:
         shell: bash
         run: |
 
-          echo "🔄 Converting OpenAPI to Postman Collection..."
-
           mkdir -p generated
+
+          echo "🔄 Converting OpenAPI to Postman Collection..."
 
           openapi2postmanv2 \
             -s openapi/fixed_spec.json \
@@ -393,16 +556,27 @@ jobs:
             exit 1
           fi
 
+          echo "✅ Postman collection generated"
+
+      # ------------------------------------------------------------
+      # Validate Postman Collection
+      # ------------------------------------------------------------
+      - name: Validate Postman Collection
+        shell: bash
+        run: |
+
+          echo "📦 Validating generated Postman collection..."
+
           ITEM_COUNT=$(cat generated/postman_collection.json | jq '.item | length')
 
           if [ -z "$ITEM_COUNT" ] || [ "$ITEM_COUNT" == "null" ]; then
-            echo "❌ Invalid Postman collection generated"
+            echo "❌ Invalid collection structure"
             exit 1
           fi
 
           echo "Endpoints Found: $ITEM_COUNT"
 
-          echo "✅ Postman collection generated successfully"
+          echo "✅ Postman collection validated"
 
       # ------------------------------------------------------------
       # Create Postman Payload
@@ -415,14 +589,6 @@ jobs:
             --slurpfile collection generated/postman_collection.json \
             '{collection: $collection[0]}' \
             > postman_payload.json
-
-          echo "--------------------------------------"
-          echo "Payload Validation"
-          echo "--------------------------------------"
-
-          cat postman_payload.json | jq '.collection.info'
-
-          echo "--------------------------------------"
 
           echo "✅ Postman payload generated"
 
@@ -478,13 +644,13 @@ jobs:
           echo "✅ Mock Registry Started"
 
       # ------------------------------------------------------------
-      # Full Automated Pipeline
+      # Register API Pipeline
       # ------------------------------------------------------------
       - name: Register API Pipeline
         shell: bash
         run: |
 
-          echo "🚀 Registering API to Central Registry..."
+          echo "🚀 Registering API..."
 
           curl --fail --show-error --silent \
             -X POST "$CENTRAL_REGISTRY_URL/registry/pipeline/register" \
@@ -498,7 +664,7 @@ jobs:
             -F "collectionFile=@generated/postman_collection.json;type=application/json"
 
           echo ""
-          echo "✅ Central Registry Sync Completed"
+          echo "✅ API Registered"
 
       # ------------------------------------------------------------
       # Sync Collection to Postman
@@ -525,9 +691,6 @@ jobs:
 
           echo "Existing UID: $EXISTING_UID"
 
-          # --------------------------------------------------------
-          # UPDATE EXISTING COLLECTION
-          # --------------------------------------------------------
           if [ ! -z "$EXISTING_UID" ]; then
 
             echo "♻️ Updating existing collection..."
@@ -539,9 +702,6 @@ jobs:
               --header "Content-Type: application/json" \
               --data @postman_payload.json)
 
-          # --------------------------------------------------------
-          # CREATE NEW COLLECTION
-          # --------------------------------------------------------
           else
 
             echo "🆕 Creating new collection..."
