@@ -410,7 +410,7 @@ jobs:
             exit 1
           fi
 
-          cat postman/collection.json | jq '.info'
+          cat postman/jsonmap.postman_collection.json | jq '.info'
 
           echo "✅ Collection file validated"
 
@@ -504,7 +504,7 @@ jobs:
             -F "environment=${{ steps.version.outputs.environment }}" \
             -F "baseUrl=http://localhost:8084" \
             -F "breakingChange=false" \
-            -F "collectionFile=@postman/collection.json;type=application/json"
+            -F "collectionFile=@postman/jsonmap.postman_collection.json;type=application/json"
 
           echo "✅ Full Pipeline Completed"
 
