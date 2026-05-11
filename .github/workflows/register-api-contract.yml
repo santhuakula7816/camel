@@ -187,6 +187,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # 🔍 DEBUG: Show content of the collection file
+      - name: Debug collection file content
+        run: |
+          echo "File exists:"
+          ls -la postman/jsonmap.postman_collection.json || echo "File missing"
+          echo "First 20 lines of file:"
+          head -20 postman/jsonmap.postman_collection.json
+          echo "--- End of debug ---"
+
       - name: Determine environment and version
         id: version
         run: |
@@ -267,7 +276,7 @@ jobs:
               "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
             }'
 
-      # ---------- Postman: Create or Update COLLECTION (FIXED) ----------
+      # ---------- Postman: Create or Update COLLECTION (with debug output) ----------
       - name: Create or Update Postman Collection
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
@@ -288,6 +297,13 @@ jobs:
           COLLECTION_NAME=$(jq -r '.info.name // "null"' "$COLLECTION_FILE")
           if [ "$COLLECTION_NAME" = "null" ]; then
             echo "❌ JSON file missing '.info.name' field"
+            echo "The file may be an OpenAPI spec or other format."
+            # Fallback: try to extract from OpenAPI title if present
+            OPENAPI_TITLE=$(jq -r '.info.title // "null"' "$COLLECTION_FILE")
+            if [ "$OPENAPI_TITLE" != "null" ]; then
+              echo "Detected OpenAPI spec with title: $OPENAPI_TITLE"
+              echo "You should either commit a real Postman collection, or use the API specification step above."
+            fi
             exit 1
           fi
           echo "Collection name: $COLLECTION_NAME"
