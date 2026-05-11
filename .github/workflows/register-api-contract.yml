@@ -422,13 +422,13 @@ jobs:
           # Force OpenAPI version
           jq '.openapi = "3.0.3"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
 
-          # Add JSON schema dialect
+          # Add schema dialect
           jq '.jsonSchemaDialect = "https://spec.openapis.org/oas/3.0/dialect/base"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
 
-          # Force semantic version
+          # Fix semantic version
           jq '.info.version = "1.0.0"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
 
-          # Force title
+          # Fix title
           jq '.info.title = "JSON Map Service API"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
 
           # Fix additionalProperties
@@ -443,12 +443,6 @@ jobs:
           cat "$FIXED_FILE"
 
           echo "--------------------------------------"
-
-          echo "OpenAPI Version:"
-          jq -r '.openapi' "$FIXED_FILE"
-
-          echo "Info Version:"
-          jq -r '.info.version' "$FIXED_FILE"
 
       # ------------------------------------------------------------
       # Validate OpenAPI Spec
@@ -590,11 +584,19 @@ jobs:
 
           echo "📦 Importing OpenAPI into Postman..."
 
-          RESPONSE=$(curl -s -X POST \
+          echo "--------------------------------------"
+          echo "OpenAPI File"
+          echo "--------------------------------------"
+
+          cat "$SPEC_FILE"
+
+          echo "--------------------------------------"
+
+          RESPONSE=$(curl --location --silent --request POST \
             "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
-            -H "X-Api-Key: $POSTMAN_API_KEY" \
-            -H "Content-Type: application/json" \
-            --data-binary @"$SPEC_FILE")
+            --header "X-Api-Key: $POSTMAN_API_KEY" \
+            --form "type=file" \
+            --form "input=@$SPEC_FILE")
 
           echo "--------------------------------------"
           echo "Postman Response"
@@ -609,10 +611,10 @@ jobs:
             exit 1
           fi
 
-          echo "✅ OpenAPI imported into Postman"
+          echo "✅ OpenAPI imported into Postman successfully"
 
       # ------------------------------------------------------------
-      # Completed
+      # Workflow Completed
       # ------------------------------------------------------------
       - name: Workflow Completed
         run: |
