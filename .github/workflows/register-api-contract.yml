@@ -449,7 +449,7 @@ jobs:
             curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
               -F "type=file" \
-              -F "file=@$SPEC_FILE"
+              -F "input=@$SPEC_FILE"
           else
             echo "Found ${#COLLECTION_IDS[@]} existing collection(s) – deleting all..."
             for ID in "${COLLECTION_IDS[@]}"; do
@@ -460,5 +460,5 @@ jobs:
             curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
               -F "type=file" \
-              -F "file=@$SPEC_FILE"
+              -F "input=@$SPEC_FILE"
           fi
