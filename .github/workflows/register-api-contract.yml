@@ -437,8 +437,13 @@ jobs:
           cp postman/jsonmap.postman_collection.json openapi_spec.json
           jq '.openapi = "3.0.3"' openapi_spec.json > temp.json && mv temp.json openapi_spec.json
           echo "✅ Converted OpenAPI to 3.0.3"
-          echo "Verifying conversion:"
+          echo "Verifying conversion - First 10 lines:"
+          head -c 500 openapi_spec.json
+          echo ""
+          echo "OpenAPI version:"
           jq '.openapi' openapi_spec.json
+          echo "Info section:"
+          jq '.info' openapi_spec.json
 
       - name: Import OpenAPI as Postman Collection
         env:
