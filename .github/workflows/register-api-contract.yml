@@ -272,7 +272,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      CENTRAL_REGISTRY_URL: https://c2ac-183-82-123-72.ngrok-free.app
+      CENTRAL_REGISTRY_URL:  https://bb98-205-254-168-63.ngrok-free.app
 
     steps:
       # ------------------------------------------------------------
