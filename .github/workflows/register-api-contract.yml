@@ -343,6 +343,9 @@ jobs:
   register:
     runs-on: ubuntu-latest
 
+    env:
+      CENTRAL_REGISTRY_URL: http://localhost:8085
+
     steps:
       # ------------------------------------------------------------
       # Checkout Repository
@@ -351,7 +354,15 @@ jobs:
         uses: actions/checkout@v4
 
       # ------------------------------------------------------------
-      # Determine Environment + Version
+      # Install jq
+      # ------------------------------------------------------------
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      # ------------------------------------------------------------
+      # Determine Environment and Version
       # ------------------------------------------------------------
       - name: Determine environment and version
         id: version
@@ -385,28 +396,20 @@ jobs:
           echo "Version: $VERSION"
 
       # ------------------------------------------------------------
-      # Verify OpenAPI File
+      # Verify OpenAPI File Exists
       # ------------------------------------------------------------
       - name: Verify OpenAPI spec file exists
         shell: bash
         run: |
           if [ ! -f "postman/jsonmap.postman_collection.json" ]; then
-            echo "❌ ERROR: OpenAPI file not found"
+            echo "❌ OpenAPI file not found"
             exit 1
           fi
 
-          echo "✅ OpenAPI spec file found"
+          echo "✅ OpenAPI file found"
 
       # ------------------------------------------------------------
-      # Install jq
-      # ------------------------------------------------------------
-      - name: Install jq
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
-
-      # ------------------------------------------------------------
-      # Prepare Valid OpenAPI Spec
+      # Prepare OpenAPI Spec
       # ------------------------------------------------------------
       - name: Prepare OpenAPI spec
         shell: bash
@@ -416,33 +419,30 @@ jobs:
 
           cp "$ORIGINAL_FILE" "$FIXED_FILE"
 
-          echo "Original File:"
-          cat "$FIXED_FILE"
-
-          # Force OpenAPI Version
+          # Force OpenAPI version
           jq '.openapi = "3.0.3"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
 
-          # Add jsonSchemaDialect
+          # Add JSON schema dialect
           jq '.jsonSchemaDialect = "https://spec.openapis.org/oas/3.0/dialect/base"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
 
           # Force semantic version
           jq '.info.version = "1.0.0"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
 
-          # Force title if missing
+          # Force title
           jq '.info.title = "JSON Map Service API"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
 
-          # Fix additionalProperties issue
+          # Fix additionalProperties
           jq '
             .components.schemas.MapperJson.properties.data.additionalProperties = true
           ' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
 
-          echo "-----------------------------------"
-          echo "Validated OpenAPI File"
-          echo "-----------------------------------"
+          echo "--------------------------------------"
+          echo "Final OpenAPI Spec"
+          echo "--------------------------------------"
 
           cat "$FIXED_FILE"
 
-          echo "-----------------------------------"
+          echo "--------------------------------------"
 
           echo "OpenAPI Version:"
           jq -r '.openapi' "$FIXED_FILE"
@@ -451,7 +451,7 @@ jobs:
           jq -r '.info.version' "$FIXED_FILE"
 
       # ------------------------------------------------------------
-      # Validate OpenAPI JSON
+      # Validate OpenAPI Spec
       # ------------------------------------------------------------
       - name: Validate OpenAPI structure
         shell: bash
@@ -462,7 +462,7 @@ jobs:
           INFO_VERSION=$(jq -r '.info.version' "$SPEC_FILE")
 
           if [ "$OPENAPI_VERSION" == "null" ]; then
-            echo "❌  Missing openapi version"
+            echo "❌ Missing openapi field"
             exit 1
           fi
 
@@ -474,12 +474,66 @@ jobs:
           echo "✅ OpenAPI validation successful"
 
       # ------------------------------------------------------------
+      # Start Mock Central Registry
+      # ------------------------------------------------------------
+      - name: Start Mock Central Registry
+        shell: bash
+        run: |
+          cat > mock_registry.py << 'EOF'
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+
+          class MockRegistry(BaseHTTPRequestHandler):
+
+              def do_POST(self):
+
+                  content_length = int(self.headers.get('Content-Length', 0))
+                  body = self.rfile.read(content_length).decode('utf-8')
+
+                  print("\n==============================")
+                  print("POST Request Received")
+                  print("==============================")
+                  print("Path:", self.path)
+                  print("Headers:", self.headers)
+                  print("Body:", body)
+                  print("==============================\n")
+
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+
+                  response = {
+                      "status": "success",
+                      "mock": True,
+                      "path": self.path
+                  }
+
+                  self.wfile.write(json.dumps(response).encode())
+
+              def log_message(self, format, *args):
+                  return
+
+          print("🚀 Mock Central Registry running on port 8085")
+
+          HTTPServer(("0.0.0.0", 8085), MockRegistry).serve_forever()
+          EOF
+
+          nohup python3 mock_registry.py > mock_registry.log 2>&1 &
+
+          sleep 5
+
+          echo "✅ Mock Registry Started"
+
+          cat mock_registry.log
+
+      # ------------------------------------------------------------
       # Register API with Central Registry
       # ------------------------------------------------------------
       - name: Register API with Central Registry
         shell: bash
         run: |
-          curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/register-file" \
+          curl --fail --show-error --silent \
+            -X POST "$CENTRAL_REGISTRY_URL/registry/apis/register-file" \
             -F "apiName=jsonmap-service" \
             -F "description=JSON Mapping Service" \
             -F "gitRepository=${{ github.repository }}" \
@@ -487,18 +541,23 @@ jobs:
             -F "breakingChange=false" \
             -F "collectionFile=@fixed_spec.json;type=application/json"
 
+          echo "✅ API Registered"
+
       # ------------------------------------------------------------
       # Register Environment
       # ------------------------------------------------------------
       - name: Register Environment
         shell: bash
         run: |
-          curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/environments" \
+          curl --fail --show-error --silent \
+            -X POST "$CENTRAL_REGISTRY_URL/registry/environments" \
             -H "Content-Type: application/json" \
             -d '{
               "envName": "${{ steps.version.outputs.environment }}",
-              "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
+              "baseUrl": "http://localhost:8084"
             }'
+
+          echo "✅ Environment Registered"
 
       # ------------------------------------------------------------
       # Mark Deployment
@@ -506,14 +565,17 @@ jobs:
       - name: Mark API Deployment
         shell: bash
         run: |
-          curl -X POST "${{ secrets.CENTRAL_REGISTRY_URL }}/registry/apis/deploy" \
+          curl --fail --show-error --silent \
+            -X POST "$CENTRAL_REGISTRY_URL/registry/apis/deploy" \
             -H "Content-Type: application/json" \
             -d '{
               "apiName": "jsonmap-service",
               "version": "${{ steps.version.outputs.version }}",
               "environment": "${{ steps.version.outputs.environment }}",
-              "baseUrl": "${{ secrets.SERVICE_BASE_URL }}"
+              "baseUrl": "http://localhost:8084"
             }'
+
+          echo "✅ Deployment Marked"
 
       # ------------------------------------------------------------
       # Import OpenAPI into Postman
@@ -528,32 +590,30 @@ jobs:
 
           echo "📦 Importing OpenAPI into Postman..."
 
-          echo "Workspace: $POSTMAN_WORKSPACE_ID"
-
           RESPONSE=$(curl -s -X POST \
             "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
             -H "X-Api-Key: $POSTMAN_API_KEY" \
             -H "Content-Type: application/json" \
             --data-binary @"$SPEC_FILE")
 
-          echo "-----------------------------------"
+          echo "--------------------------------------"
           echo "Postman Response"
-          echo "-----------------------------------"
+          echo "--------------------------------------"
 
           echo "$RESPONSE" | jq '.'
 
-          echo "-----------------------------------"
+          echo "--------------------------------------"
 
           if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
-            echo "❌ Postman Import Failed"
+            echo "❌ Postman import failed"
             exit 1
           fi
 
-          echo "✅ OpenAPI imported successfully"
+          echo "✅ OpenAPI imported into Postman"
 
       # ------------------------------------------------------------
-      # Success
+      # Completed
       # ------------------------------------------------------------
-      - name: Completed
+      - name: Workflow Completed
         run: |
-          echo "✅ API Registration Completed Successfully"
+          echo "🎉 API Registration Workflow Completed Successfully"
