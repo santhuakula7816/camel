@@ -519,7 +519,7 @@ jobs:
                     }
                   }
                 },
-                "delete/delete": {
+                "delete": {
                   "tags": [
                     "mapper-json-controller"
                   ],
