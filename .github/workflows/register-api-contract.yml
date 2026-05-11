@@ -405,12 +405,12 @@ jobs:
 
           echo "📦 Reading existing Postman collection..."
 
-          if [ ! -f "postman/collection_jsonmap.json" ]; then
-            echo "❌ postman/collection_jsonmap.json not found"
+          if [ ! -f "postman/jsonmap.postman_collection.json" ]; then
+            echo "❌ postman/jsonmap.postman_collection.json not found"
             exit 1
           fi
 
-          cat postman/collection_jsonmap.json | jq '.info'
+          cat postman/jsonmap.postman_collection.json | jq '.info'
 
           echo "✅ Collection file validated"
 
@@ -422,7 +422,7 @@ jobs:
         run: |
 
           jq -n \
-            --slurpfile collection postman/collection_jsonmap.json \
+            --slurpfile collection postman/jsonmap.postman_collection.json \
             '{collection: $collection[0]}' \
             > postman_payload.json
 
