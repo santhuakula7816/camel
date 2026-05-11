@@ -432,12 +432,12 @@ jobs:
             }'
 
       # ---------- Import OpenAPI as Postman Collection (using converted 3.0.3 file) ----------
-      - name: Import OpenAPI as Postman Collection
+      - name: Import Postman Collection
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         run: |
-          SPEC_FILE="openapi_converted.json"
+          SPEC_FILE="postman/jsonmap.postman_collection.json"
           COLLECTION_NAME=$(jq -r '.info.title' "$SPEC_FILE")
           echo "Working in workspace: $POSTMAN_WORKSPACE_ID"
 
@@ -453,7 +453,7 @@ jobs:
 
           if [ ${#COLLECTION_IDS[@]} -eq 0 ]; then
             echo "No existing collection – creating new one via import..."
-            curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
+            curl -X POST "https://api.getpostman.com/import/postman?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
               -F "type=file" \
               -F "input=@$SPEC_FILE"
@@ -464,7 +464,7 @@ jobs:
                 -H "X-Api-Key: $POSTMAN_API_KEY"
             done
             echo "Re‑importing collection..."
-            curl -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
+            curl -X POST "https://api.getpostman.com/import/postman?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
               -F "type=file" \
               -F "input=@$SPEC_FILE"
