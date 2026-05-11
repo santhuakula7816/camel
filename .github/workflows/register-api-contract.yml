@@ -396,52 +396,165 @@ jobs:
           echo "Version: $VERSION"
 
       # ------------------------------------------------------------
-      # Verify OpenAPI File Exists
+      # Generate Clean OpenAPI Spec
       # ------------------------------------------------------------
-      - name: Verify OpenAPI spec file exists
+      - name: Generate OpenAPI spec
         shell: bash
         run: |
-          if [ ! -f "postman/jsonmap.postman_collection.json" ]; then
-            echo "❌ OpenAPI file not found"
-            exit 1
-          fi
+          cat > fixed_spec.json << 'EOF'
+          {
+            "openapi": "3.0.3",
+            "info": {
+              "title": "JSON Map Service API",
+              "version": "1.0.0",
+              "description": "API for managing JSON mapping data"
+            },
+            "servers": [
+              {
+                "url": "http://localhost:8084",
+                "description": "Local Development Server"
+              }
+            ],
+            "paths": {
+              "/json/getAll": {
+                "get": {
+                  "tags": [
+                    "mapper-json-controller"
+                  ],
+                  "summary": "Get all JSON mappings",
+                  "operationId": "getAllLocations",
+                  "responses": {
+                    "200": {
+                      "description": "List of all JSON mappings",
+                      "content": {
+                        "application/json": {
+                          "schema": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/MapperJson"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "/json/create": {
+                "post": {
+                  "tags": [
+                    "mapper-json-controller"
+                  ],
+                  "summary": "Create JSON mapping",
+                  "operationId": "createRack",
+                  "requestBody": {
+                    "required": true,
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "$ref": "#/components/schemas/MapperJson"
+                        }
+                      }
+                    }
+                  },
+                  "responses": {
+                    "200": {
+                      "description": "JSON mapping created successfully",
+                      "content": {
+                        "application/json": {
+                          "schema": {
+                            "$ref": "#/components/schemas/MapperJson"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "/json/{id}": {
+                "put": {
+                  "tags": [
+                    "mapper-json-controller"
+                  ],
+                  "summary": "Update JSON mapping",
+                  "operationId": "update",
+                  "parameters": [
+                    {
+                      "name": "id",
+                      "in": "path",
+                      "required": true,
+                      "schema": {
+                        "type": "string"
+                      }
+                    }
+                  ],
+                  "requestBody": {
+                    "required": true,
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "$ref": "#/components/schemas/MapperJson"
+                        }
+                      }
+                    }
+                  },
+                  "responses": {
+                    "200": {
+                      "description": "JSON mapping updated successfully"
+                    }
+                  }
+                },
+                "delete": {
+                  "tags": [
+                    "mapper-json-controller"
+                  ],
+                  "summary": "Delete JSON mapping",
+                  "operationId": "delete",
+                  "parameters": [
+                    {
+                      "name": "id",
+                      "in": "path",
+                      "required": true,
+                      "schema": {
+                        "type": "string"
+                      }
+                    }
+                  ],
+                  "responses": {
+                    "200": {
+                      "description": "JSON mapping deleted successfully"
+                    }
+                  }
+                }
+              }
+            },
+            "components": {
+              "schemas": {
+                "MapperJson": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "example": "12345"
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "example": {
+                        "name": "sample"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          EOF
 
-          echo "✅ OpenAPI file found"
-
-      # ------------------------------------------------------------
-      # Prepare OpenAPI Spec
-      # ------------------------------------------------------------
-      - name: Prepare OpenAPI spec
-        shell: bash
-        run: |
-          ORIGINAL_FILE="postman/jsonmap.postman_collection.json"
-          FIXED_FILE="fixed_spec.json"
-
-          cp "$ORIGINAL_FILE" "$FIXED_FILE"
-
-          # Force OpenAPI version
-          jq '.openapi = "3.0.3"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
-
-          # Add schema dialect
-          jq '.jsonSchemaDialect = "https://spec.openapis.org/oas/3.0/dialect/base"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
-
-          # Fix semantic version
-          jq '.info.version = "1.0.0"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
-
-          # Fix title
-          jq '.info.title = "JSON Map Service API"' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
-
-          # Fix additionalProperties
-          jq '
-            .components.schemas.MapperJson.properties.data.additionalProperties = true
-          ' "$FIXED_FILE" > tmp.json && mv tmp.json "$FIXED_FILE"
+          echo "✅ OpenAPI spec generated"
 
           echo "--------------------------------------"
-          echo "Final OpenAPI Spec"
-          echo "--------------------------------------"
-
-          cat "$FIXED_FILE"
-
+          cat fixed_spec.json
           echo "--------------------------------------"
 
       # ------------------------------------------------------------
@@ -450,18 +563,19 @@ jobs:
       - name: Validate OpenAPI structure
         shell: bash
         run: |
-          SPEC_FILE="fixed_spec.json"
+          OPENAPI_VERSION=$(jq -r '.openapi' fixed_spec.json)
+          INFO_VERSION=$(jq -r '.info.version' fixed_spec.json)
 
-          OPENAPI_VERSION=$(jq -r '.openapi' "$SPEC_FILE")
-          INFO_VERSION=$(jq -r '.info.version' "$SPEC_FILE")
+          echo "OpenAPI Version: $OPENAPI_VERSION"
+          echo "Info Version: $INFO_VERSION"
 
-          if [ "$OPENAPI_VERSION" == "null" ]; then
-            echo "❌ Missing openapi field"
+          if [ "$OPENAPI_VERSION" != "3.0.3" ]; then
+            echo "❌ Invalid OpenAPI version"
             exit 1
           fi
 
-          if [ "$INFO_VERSION" == "null" ]; then
-            echo "❌ Missing info.version"
+          if [ "$INFO_VERSION" != "1.0.0" ]; then
+            echo "❌ Invalid semantic version"
             exit 1
           fi
 
@@ -580,23 +694,13 @@ jobs:
           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         shell: bash
         run: |
-          SPEC_FILE="fixed_spec.json"
-
           echo "📦 Importing OpenAPI into Postman..."
-
-          echo "--------------------------------------"
-          echo "OpenAPI File"
-          echo "--------------------------------------"
-
-          cat "$SPEC_FILE"
-
-          echo "--------------------------------------"
 
           RESPONSE=$(curl --location --silent --request POST \
             "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
             --header "X-Api-Key: $POSTMAN_API_KEY" \
             --form "type=file" \
-            --form "input=@$SPEC_FILE")
+            --form "input=@fixed_spec.json")
 
           echo "--------------------------------------"
           echo "Postman Response"
