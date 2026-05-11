@@ -327,6 +327,7 @@
 #               -F "type=openapi3_0" \
 #               -F "files=@$SPEC_FILE"
 #           fi
+
 name: Register JSON Map Service API
 
 on:
