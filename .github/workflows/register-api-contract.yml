@@ -276,7 +276,7 @@ jobs:
 
     steps:
       # ------------------------------------------------------------
-      # Checkout Repositories
+      # Checkout Repository
       # ------------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
@@ -365,86 +365,33 @@ jobs:
             "paths": {
               "/json/getAll": {
                 "get": {
-                  "tags": [
-                    "mapper-json-controller"
-                  ],
+                  "tags": ["mapper-json-controller"],
                   "summary": "Get all JSON mappings",
                   "operationId": "getAllLocations",
                   "responses": {
                     "200": {
-                      "description": "List of all JSON mappings",
-                      "content": {
-                        "application/json": {
-                          "schema": {
-                            "type": "array",
-                            "items": {
-                              "$ref": "#/components/schemas/MapperJson"
-                            }
-                          }
-                        }
-                      }
+                      "description": "List of all JSON mappings"
                     }
                   }
                 }
               },
               "/json/create": {
                 "post": {
-                  "tags": [
-                    "mapper-json-controller"
-                  ],
+                  "tags": ["mapper-json-controller"],
                   "summary": "Create JSON mapping",
                   "operationId": "createRack",
-                  "requestBody": {
-                    "required": true,
-                    "content": {
-                      "application/json": {
-                        "schema": {
-                          "$ref": "#/components/schemas/MapperJson"
-                        }
-                      }
-                    }
-                  },
                   "responses": {
                     "200": {
-                      "description": "JSON mapping created successfully",
-                      "content": {
-                        "application/json": {
-                          "schema": {
-                            "$ref": "#/components/schemas/MapperJson"
-                          }
-                        }
-                      }
+                      "description": "JSON mapping created successfully"
                     }
                   }
                 }
               },
               "/json/{id}": {
                 "put": {
-                  "tags": [
-                    "mapper-json-controller"
-                  ],
+                  "tags": ["mapper-json-controller"],
                   "summary": "Update JSON mapping",
                   "operationId": "update",
-                  "parameters": [
-                    {
-                      "name": "id",
-                      "in": "path",
-                      "required": true,
-                      "schema": {
-                        "type": "string"
-                      }
-                    }
-                  ],
-                  "requestBody": {
-                    "required": true,
-                    "content": {
-                      "application/json": {
-                        "schema": {
-                          "$ref": "#/components/schemas/MapperJson"
-                        }
-                      }
-                    }
-                  },
                   "responses": {
                     "200": {
                       "description": "JSON mapping updated successfully"
@@ -452,46 +399,12 @@ jobs:
                   }
                 },
                 "delete": {
-                  "tags": [
-                    "mapper-json-controller"
-                  ],
+                  "tags": ["mapper-json-controller"],
                   "summary": "Delete JSON mapping",
                   "operationId": "delete",
-                  "parameters": [
-                    {
-                      "name": "id",
-                      "in": "path",
-                      "required": true,
-                      "schema": {
-                        "type": "string"
-                      }
-                    }
-                  ],
                   "responses": {
                     "200": {
                       "description": "JSON mapping deleted successfully"
-                    }
-                  }
-                }
-              }
-            },
-            "components": {
-              "schemas": {
-                "MapperJson": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "example": "12345"
-                    },
-                    "data": {
-                      "type": "object",
-                      "additionalProperties": {
-                        "type": "string"
-                      },
-                      "example": {
-                        "name": "sample"
-                      }
                     }
                   }
                 }
@@ -592,7 +505,6 @@ jobs:
 
           echo "✅ Postman payload generated"
 
-      
       # ------------------------------------------------------------
       # Register API Pipeline
       # ------------------------------------------------------------
@@ -602,18 +514,30 @@ jobs:
 
           echo "🚀 Registering API..."
 
-          curl --fail --show-error --silent \
-            -X POST "$CENTRAL_REGISTRY_URL/registry/pipeline/register" \
-            -F "apiName=jsonmap-service" \
-            -F "description=JSON Mapping Service" \
-            -F "gitRepository=${{ github.repository }}" \
-            -F "version=${{ steps.version.outputs.version }}" \
-            -F "environment=${{ steps.version.outputs.environment }}" \
-            -F "baseUrl=http://localhost:8084" \
-            -F "breakingChange=false" \
-            -F "collectionFile=@generated/postman_collection.json;type=application/json"
+          RESPONSE=$(curl --location --silent --show-error \
+            --request POST "${CENTRAL_REGISTRY_URL}/registry/pipeline/register" \
+            --form "apiName=jsonmap-service" \
+            --form "description=JSON Mapping Service" \
+            --form "gitRepository=https://github.com/${{ github.repository }}" \
+            --form "version=${{ steps.version.outputs.version }}" \
+            --form "environment=${{ steps.version.outputs.environment }}" \
+            --form "baseUrl=http://localhost:8084" \
+            --form "breakingChange=false" \
+            --form "collectionFile=@generated/postman_collection.json;type=application/json")
 
-          echo ""
+          echo "--------------------------------------"
+          echo "Registry Response"
+          echo "--------------------------------------"
+
+          echo "$RESPONSE"
+
+          echo "--------------------------------------"
+
+          if [[ -z "$RESPONSE" ]]; then
+            echo "❌ Empty response from registry"
+            exit 1
+          fi
+
           echo "✅ API Registered"
 
       # ------------------------------------------------------------
@@ -641,7 +565,10 @@ jobs:
 
           echo "Existing UID: $EXISTING_UID"
 
-          if [ ! -z "$EXISTING_UID" ]; then
+          # --------------------------------------------------------
+          # UPDATE EXISTING COLLECTION
+          # --------------------------------------------------------
+          if [ ! -z "$EXISTING_UID" ] && [ "$EXISTING_UID" != "null" ]; then
 
             echo "♻️ Updating existing collection..."
 
@@ -652,6 +579,9 @@ jobs:
               --header "Content-Type: application/json" \
               --data @postman_payload.json)
 
+          # --------------------------------------------------------
+          # CREATE NEW COLLECTION
+          # --------------------------------------------------------
           else
 
             echo "🆕 Creating new collection..."
