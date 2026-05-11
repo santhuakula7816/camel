@@ -696,10 +696,18 @@ jobs:
         run: |
           echo "📦 Importing OpenAPI into Postman..."
 
-          RESPONSE=$(curl --location --silent --request POST \
-            "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
+          echo "--------------------------------------"
+          echo "OpenAPI Spec"
+          echo "--------------------------------------"
+
+          cat fixed_spec.json
+
+          echo "--------------------------------------"
+
+          RESPONSE=$(curl --silent --location \
+            --request POST "https://api.getpostman.com/imports?workspace=$POSTMAN_WORKSPACE_ID" \
             --header "X-Api-Key: $POSTMAN_API_KEY" \
-            --form "type=file" \
+            --form "type=openapi" \
             --form "input=@fixed_spec.json")
 
           echo "--------------------------------------"
@@ -715,7 +723,7 @@ jobs:
             exit 1
           fi
 
-          echo "✅ OpenAPI imported into Postman successfully"
+          echo "✅ OpenAPI imported successfully into Postman"
 
       # ------------------------------------------------------------
       # Workflow Completed
