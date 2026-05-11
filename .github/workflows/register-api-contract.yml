@@ -461,6 +461,7 @@ jobs:
             echo "✨ No existing collection – creating new one..."
             RESPONSE=$(curl -s -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
+              -F "type=openapi" \
               -F "input=@$SPEC_FILE")
             
             if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
@@ -482,6 +483,8 @@ jobs:
             echo "📥 Re-importing collection..."
             RESPONSE=$(curl -s -X POST "https://api.getpostman.com/import/openapi?workspaceId=$POSTMAN_WORKSPACE_ID" \
               -H "X-Api-Key: $POSTMAN_API_KEY" \
+              -F "type=openapi" \
+
               -F "input=@$SPEC_FILE")
             
             if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
