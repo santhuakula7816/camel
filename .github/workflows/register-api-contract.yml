@@ -370,18 +370,18 @@ jobs:
       # ✅ FIXED: Verify proper OpenAPI spec file exists
       - name: Verify OpenAPI spec file exists
         run: |
-          if [ ! -f "openapi/jsonmap-openapi.json" ]; then
-            echo "❌ ERROR: OpenAPI spec not found at openapi/jsonmap-openapi.json"
+          if [ ! -f "postman/jsonmap.postman_collection.json" ]; then
+            echo "❌ ERROR: OpenAPI spec not found at postman/jsonmap.postman_collection.json"
             exit 1
           fi
           echo "✅ OpenAPI spec file found."
           # Validate it has required OpenAPI fields
-          jq 'if .openapi and .info and .info.version then "✅ Valid OpenAPI structure" else "❌ Invalid structure" end' openapi/jsonmap-openapi.json
+          jq 'if .openapi and .info and .info.version then "✅ Valid OpenAPI structure" else "❌ Invalid structure" end' postman/jsonmap.postman_collection.json
 
       # ✅ FIXED: Validate and ensure proper OpenAPI 3.0.x format
       - name: Validate and fix OpenAPI spec for Postman
         run: |
-          SPEC_FILE="openapi/jsonmap-openapi.json"
+          SPEC_FILE="postman/jsonmap.postman_collection.json"
 
           # Validate with jq
           jq . "$SPEC_FILE" > /dev/null 2>&1 || { echo "❌ Invalid JSON"; exit 1; }
@@ -410,7 +410,7 @@ jobs:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         run: |
-          SPEC_FILE="openapi/jsonmap-openapi.json"
+          SPEC_FILE="postman/jsonmap.postman_collection.json"
           COLLECTION_NAME=$(jq -r '.info.title' "$SPEC_FILE")
           echo "📦 Working in workspace: $POSTMAN_WORKSPACE_ID"
           echo "📋 Collection name: $COLLECTION_NAME"
