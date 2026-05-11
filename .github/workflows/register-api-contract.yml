@@ -272,11 +272,11 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      CENTRAL_REGISTRY_URL:  https://bb98-205-254-168-63.ngrok-free.app
+      CENTRAL_REGISTRY_URL: https://bb98-205-254-168-63.ngrok-free.app
 
     steps:
       # ------------------------------------------------------------
-      # Checkout Repository
+      # Checkout Repositories
       # ------------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
