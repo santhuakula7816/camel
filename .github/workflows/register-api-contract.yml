@@ -275,7 +275,6 @@ jobs:
       CENTRAL_REGISTRY_URL: http://localhost:8085
 
     steps:
-
       # ------------------------------------------------------------
       # Checkout Repository
       # ------------------------------------------------------------
@@ -289,6 +288,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
+
+      # ------------------------------------------------------------
+      # Setup Node.js
+      # ------------------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ------------------------------------------------------------
+      # Install OpenAPI to Postman Converter
+      # ------------------------------------------------------------
+      - name: Install OpenAPI Converter
+        run: |
+          npm install -g openapi-to-postmanv2
 
       # ------------------------------------------------------------
       # Determine Environment and Version
@@ -326,51 +340,69 @@ jobs:
           echo "Version: $VERSION"
 
       # ------------------------------------------------------------
-      # Validate Existing Collection
+      # Validate OpenAPI Spec
       # ------------------------------------------------------------
-      - name: Validate collection file
+      - name: Validate OpenAPI spec
         shell: bash
         run: |
 
-          echo "📦 Reading existing Postman collection..."
+          echo "📦 Validating OpenAPI spec..."
 
-          if [ ! -f "postman/jsonmap.postman_collection.json" ]; then
-            echo "❌ postman/jsonmap.postman_collection.json not found"
+          if [ ! -f "openapi/fixed_spec.json" ]; then
+            echo "❌ openapi/fixed_spec.json not found"
             exit 1
           fi
 
-          cat postman/jsonmap.postman_collection.json | jq '.info'
+          OPENAPI_VERSION=$(jq -r '.openapi' openapi/fixed_spec.json)
 
-          COLLECTION_NAME=$(jq -r '.info.name' postman/jsonmap.postman_collection.json)
-
-          if [ "$COLLECTION_NAME" == "null" ]; then
-            echo "❌ Invalid collection structure"
+          if [ -z "$OPENAPI_VERSION" ] || [ "$OPENAPI_VERSION" == "null" ]; then
+            echo "❌ Invalid OpenAPI specification"
             exit 1
           fi
 
-          echo "✅ Collection file validated"
+          echo "OpenAPI Version: $OPENAPI_VERSION"
+
+          echo "✅ OpenAPI validation successful"
 
       # ------------------------------------------------------------
-      # Update Collection Name Dynamically
+      # Convert OpenAPI -> Postman Collection
       # ------------------------------------------------------------
-      - name: Update Collection Name
+      - name: Convert OpenAPI to Postman Collection
         shell: bash
         run: |
 
-          COLLECTION_NAME="jsonmap-service-${{ steps.version.outputs.version }}"
+          echo "🔄 Converting OpenAPI to Postman Collection..."
 
-          jq --arg NAME "$COLLECTION_NAME" \
-            '.info.name = $NAME' \
-            postman/jsonmap.postman_collection.json \
-            > updated_collection.json
+          mkdir -p generated
 
-          echo "--------------------------------------"
-          echo "Updated Collection Info"
-          echo "--------------------------------------"
-
-          cat updated_collection.json | jq '.info'
+          openapi2postmanv2 \
+            -s openapi/fixed_spec.json \
+            -o generated/postman_collection.json \
+            -p
 
           echo "--------------------------------------"
+          echo "Generated Collection Info"
+          echo "--------------------------------------"
+
+          cat generated/postman_collection.json | jq '.info'
+
+          echo "--------------------------------------"
+
+          if [ ! -f "generated/postman_collection.json" ]; then
+            echo "❌ Collection generation failed"
+            exit 1
+          fi
+
+          ITEM_COUNT=$(cat generated/postman_collection.json | jq '.item | length')
+
+          if [ -z "$ITEM_COUNT" ] || [ "$ITEM_COUNT" == "null" ]; then
+            echo "❌ Invalid Postman collection generated"
+            exit 1
+          fi
+
+          echo "Endpoints Found: $ITEM_COUNT"
+
+          echo "✅ Postman collection generated successfully"
 
       # ------------------------------------------------------------
       # Create Postman Payload
@@ -380,12 +412,12 @@ jobs:
         run: |
 
           jq -n \
-            --slurpfile collection updated_collection.json \
+            --slurpfile collection generated/postman_collection.json \
             '{collection: $collection[0]}' \
             > postman_payload.json
 
           echo "--------------------------------------"
-          echo "Payload Preview"
+          echo "Payload Validation"
           echo "--------------------------------------"
 
           cat postman_payload.json | jq '.collection.info'
@@ -396,7 +428,6 @@ jobs:
 
       # ------------------------------------------------------------
       # Start Mock Central Registry
-      # REMOVE THIS IN REAL SERVER
       # ------------------------------------------------------------
       - name: Start Mock Central Registry
         shell: bash
@@ -447,11 +478,13 @@ jobs:
           echo "✅ Mock Registry Started"
 
       # ------------------------------------------------------------
-      # FULL AUTOMATED PIPELINE
+      # Full Automated Pipeline
       # ------------------------------------------------------------
       - name: Register API Pipeline
         shell: bash
         run: |
+
+          echo "🚀 Registering API to Central Registry..."
 
           curl --fail --show-error --silent \
             -X POST "$CENTRAL_REGISTRY_URL/registry/pipeline/register" \
@@ -462,14 +495,13 @@ jobs:
             -F "environment=${{ steps.version.outputs.environment }}" \
             -F "baseUrl=http://localhost:8084" \
             -F "breakingChange=false" \
-            -F "collectionFile=@updated_collection.json;type=application/json"
+            -F "collectionFile=@generated/postman_collection.json;type=application/json"
 
-          echo "✅ Full Pipeline Completed"
+          echo ""
+          echo "✅ Central Registry Sync Completed"
 
       # ------------------------------------------------------------
       # Sync Collection to Postman
-      # SAME VERSION  -> UPDATE
-      # NEW VERSION   -> CREATE
       # ------------------------------------------------------------
       - name: Sync Collection to Postman
         env:
@@ -481,10 +513,6 @@ jobs:
           echo "📦 Syncing Collection to Postman..."
 
           COLLECTION_NAME="jsonmap-service-${{ steps.version.outputs.version }}"
-
-          # --------------------------------------------------------
-          # SEARCH COLLECTION
-          # --------------------------------------------------------
 
           SEARCH_RESPONSE=$(curl --silent \
             --request GET \
@@ -500,7 +528,6 @@ jobs:
           # --------------------------------------------------------
           # UPDATE EXISTING COLLECTION
           # --------------------------------------------------------
-
           if [ ! -z "$EXISTING_UID" ]; then
 
             echo "♻️ Updating existing collection..."
@@ -515,7 +542,6 @@ jobs:
           # --------------------------------------------------------
           # CREATE NEW COLLECTION
           # --------------------------------------------------------
-
           else
 
             echo "🆕 Creating new collection..."
