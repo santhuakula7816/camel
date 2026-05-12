@@ -1743,35 +1743,45 @@ jobs:
           npm install -g openapi-to-postmanv2
 
       # ------------------------------------------------------------
-      # DETERMINE VERSION + MODE
+      # DETERMINE VERSION + ENVIRONMENT + MODE
       # ------------------------------------------------------------
-      - name: Determine version and mode
+      - name: Determine version, environment and mode
         id: version
         shell: bash
         run: |
 
+          # ---- Determine VERSION ----
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-
             VERSION="${GITHUB_REF#refs/tags/}"
             MODE="NEW_VERSION"
-
           else
-
             VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "snapshot")
             MODE="UPDATE_VERSION"
+          fi
 
+          # ---- Determine ENVIRONMENT from branch ----
+          if [[ "${GITHUB_REF}" == refs/heads/main ]]; then
+            ENVIRONMENT="prod"
+          elif [[ "${GITHUB_REF}" == refs/heads/dev ]]; then
+            ENVIRONMENT="dev"
+          else
+            # For tag pushes, try to infer from branch that the tag was created on
+            # Default to prod for tags if we cannot determine
+            ENVIRONMENT="prod"
           fi
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "mode=$MODE" >> $GITHUB_OUTPUT
+          echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
 
           echo "--------------------------------------"
           echo "VERSION=$VERSION"
           echo "MODE=$MODE"
+          echo "ENVIRONMENT=$ENVIRONMENT"
           echo "--------------------------------------"
 
       # ------------------------------------------------------------
-      # GENERATE OPENAPI SPEC
+      # GENERATE OPENAPI SPEC (with version from above)
       # ------------------------------------------------------------
       - name: Generate OpenAPI Spec
         shell: bash
@@ -1797,7 +1807,7 @@ jobs:
             ],
             "paths": {
 
-              "/json/getAllJsons": {
+              "/json/getAll": {
                 "get": {
                   "tags": ["mapper-json-controller"],
                   "summary": "Get all JSON mappings",
@@ -1825,7 +1835,6 @@ jobs:
                   "tags": ["mapper-json-controller"],
                   "summary": "Create JSON mapping",
                   "operationId": "createMapping",
-
                   "requestBody": {
                     "required": true,
                     "content": {
@@ -1836,7 +1845,6 @@ jobs:
                       }
                     }
                   },
-
                   "responses": {
                     "200": {
                       "description": "Created successfully",
@@ -1853,12 +1861,10 @@ jobs:
               },
 
               "/json/{id}": {
-
                 "put": {
                   "tags": ["mapper-json-controller"],
                   "summary": "Update JSON mapping",
                   "operationId": "updateMapping",
-
                   "parameters": [
                     {
                       "name": "id",
@@ -1869,7 +1875,6 @@ jobs:
                       }
                     }
                   ],
-
                   "requestBody": {
                     "required": true,
                     "content": {
@@ -1880,7 +1885,6 @@ jobs:
                       }
                     }
                   },
-
                   "responses": {
                     "200": {
                       "description": "Updated successfully",
@@ -1894,12 +1898,10 @@ jobs:
                     }
                   }
                 },
-
                 "delete": {
                   "tags": ["mapper-json-controller"],
-                  "summary": "Delete JSON mapping",
+                  "summary": "Delete JSON mappingss",
                   "operationId": "deleteMapping",
-
                   "parameters": [
                     {
                       "name": "id",
@@ -1910,7 +1912,6 @@ jobs:
                       }
                     }
                   ],
-
                   "responses": {
                     "200": {
                       "description": "Deleted successfully",
@@ -1926,24 +1927,19 @@ jobs:
                 }
               }
             },
-
             "components": {
               "schemas": {
-
                 "MapperJson": {
                   "type": "object",
                   "properties": {
-
                     "id": {
                       "type": "string",
                       "example": "123"
                     },
-
                     "name": {
                       "type": "string",
                       "example": "sample-mapping"
                     },
-
                     "data": {
                       "type": "object",
                       "additionalProperties": {
@@ -1956,16 +1952,13 @@ jobs:
                     }
                   }
                 },
-
                 "DeleteResponse": {
                   "type": "object",
                   "properties": {
-
                     "status": {
                       "type": "string",
                       "example": "SUCCESS"
                     },
-
                     "message": {
                       "type": "string",
                       "example": "Deleted successfully"
@@ -2028,7 +2021,7 @@ jobs:
           echo "Endpoints Found: $ITEM_COUNT"
 
       # ------------------------------------------------------------
-      # REGISTER TO REGISTRY SERVICE
+      # REGISTER API METADATA TO CENTRAL REGISTRY (without collection UID yet)
       # ------------------------------------------------------------
       - name: Register API Pipeline
         shell: bash
@@ -2040,7 +2033,7 @@ jobs:
             --form "description=JSON Mapping Service" \
             --form "gitRepository=https://github.com/${{ github.repository }}" \
             --form "version=${{ steps.version.outputs.version }}" \
-            --form "environment=prod" \
+            --form "environment=${{ steps.version.outputs.environment }}" \
             --form "baseUrl=http://localhost:8084" \
             --form "breakingChange=false" \
             --form "collectionFile=@generated/postman_collection.json;type=application/json")
@@ -2048,7 +2041,7 @@ jobs:
           echo "$RESPONSE"
 
       # ------------------------------------------------------------
-      # SYNC TO POSTMAN
+      # SYNC COLLECTION TO POSTMAN (VERSION FOLDER OVERRIDE LOGIC)
       # ------------------------------------------------------------
       - name: Sync Collection to Postman
         env:
@@ -2058,13 +2051,11 @@ jobs:
         run: |
 
           VERSION="${{ steps.version.outputs.version }}"
-          ENVIRONMENT="prod"
-
+          # Version folder is just the version number (no environment suffix)
+          VERSION_FOLDER="${VERSION}"
           ROOT_COLLECTION_NAME="jsonmap-service"
 
-          VERSION_FOLDER="${VERSION}-${ENVIRONMENT}"
-
-          echo "VERSION_FOLDER=$VERSION_FOLDER"
+          echo "VERSION_FOLDER=${VERSION_FOLDER}"
 
           # --------------------------------------------------------
           # SEARCH ROOT COLLECTION
@@ -2079,7 +2070,7 @@ jobs:
             '.collections[] | select(.name==$NAME) | .uid' | head -1)
 
           # --------------------------------------------------------
-          # CREATE ROOT COLLECTION
+          # CREATE ROOT COLLECTION IF NOT EXISTS
           # --------------------------------------------------------
           if [ -z "$EXISTING_UID" ] || [ "$EXISTING_UID" == "null" ]; then
 
@@ -2105,6 +2096,8 @@ jobs:
             EXISTING_UID=$(echo "$CREATE_RESPONSE" | jq -r '.collection.uid')
           fi
 
+          echo "Root Collection UID: ${EXISTING_UID}"
+
           # --------------------------------------------------------
           # DOWNLOAD EXISTING COLLECTION
           # --------------------------------------------------------
@@ -2115,8 +2108,9 @@ jobs:
             > existing_collection.json
 
           # --------------------------------------------------------
-          # CREATE VERSION FOLDER
+          # CREATE VERSION FOLDER FROM GENERATED COLLECTION
           # --------------------------------------------------------
+          # Rename the root folder to our version number
           jq --arg versionFolder "$VERSION_FOLDER" '
           {
             name: $versionFolder,
@@ -2125,7 +2119,7 @@ jobs:
           ' generated/postman_collection.json > version_folder.json
 
           # --------------------------------------------------------
-          # CHECK EXISTING VERSION
+          # CHECK IF VERSION FOLDER ALREADY EXISTS
           # --------------------------------------------------------
           VERSION_EXISTS=$(jq -r \
             --arg versionFolder "$VERSION_FOLDER" \
@@ -2133,33 +2127,27 @@ jobs:
             existing_collection.json)
 
           # --------------------------------------------------------
-          # SAME VERSION -> OVERRIDE
+          # SAME VERSION -> OVERRIDE (remove old, then append new)
           # --------------------------------------------------------
           if [ ! -z "$VERSION_EXISTS" ]; then
-
-            echo "♻️ Updating Existing Version"
-
+            echo "♻️ Updating Existing Version (${VERSION_FOLDER}) - will override"
             jq --arg versionFolder "$VERSION_FOLDER" '
             .collection.item |= map(select(.name != $versionFolder))
             ' existing_collection.json > cleaned_collection.json
-
           else
-
-            echo "🆕 Creating New Version"
-
+            echo "🆕 Creating New Version (${VERSION_FOLDER})"
             cp existing_collection.json cleaned_collection.json
-
           fi
 
           # --------------------------------------------------------
-          # APPEND VERSION FOLDER
+          # APPEND THE NEW/UPDATED VERSION FOLDER
           # --------------------------------------------------------
           jq --slurpfile folder version_folder.json '
           .collection.item += $folder
           ' cleaned_collection.json > updated_collection.json
 
           # --------------------------------------------------------
-          # UPDATE COLLECTION
+          # UPDATE THE COLLECTION IN POSTMAN
           # --------------------------------------------------------
           RESPONSE=$(curl --silent \
             --request PUT \
@@ -2171,11 +2159,104 @@ jobs:
           echo "$RESPONSE" | jq '.'
 
           if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
-            echo "❌ Postman Sync Failed"
+            echo "❌ Postman Collection Sync Failed"
             exit 1
           fi
 
-          echo "✅ Postman Sync Successful"
+          # --------------------------------------------------------
+          # CAPTURE COLLECTION UID AND SEND TO REGISTRY
+          # --------------------------------------------------------
+          COLLECTION_UID=$(echo "$RESPONSE" | jq -r '.collection.uid')
+          echo "Captured Collection UID: ${COLLECTION_UID}"
+
+          # Store the UID in the central registry (update the existing record)
+          curl --location --silent --show-error \
+            --request POST "${CENTRAL_REGISTRY_URL}/registry/update-collection" \
+            --form "apiName=jsonmap-service" \
+            --form "version=${{ steps.version.outputs.version }}" \
+            --form "environment=${{ steps.version.outputs.environment }}" \
+            --form "collectionUid=${COLLECTION_UID}" \
+            --form "collectionId=$(echo "$COLLECTION_UID" | cut -d'-' -f2-)"
+
+          echo "✅ Postman Collection Sync Successful, UID stored"
+
+      # ------------------------------------------------------------
+      # SYNC POSTMAN ENVIRONMENT (separate from collection)
+      # ------------------------------------------------------------
+      - name: Sync Postman Environment
+        env:
+          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+          POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
+        shell: bash
+        run: |
+
+          ENVIRONMENT="${{ steps.version.outputs.environment }}"
+          ENV_NAME="jsonmap-service-${ENVIRONMENT}"
+
+          # Dynamically set baseUrl based on environment
+          if [ "$ENVIRONMENT" == "prod" ]; then
+            BASE_URL="https://api.example.com"
+          elif [ "$ENVIRONMENT" == "dev" ]; then
+            BASE_URL="https://dev-api.example.com"
+          else
+            BASE_URL="https://uat-api.example.com"
+          fi
+
+          echo "Syncing Postman Environment: ${ENV_NAME} with baseUrl=${BASE_URL}"
+
+          # Search for existing environment
+          SEARCH_ENV=$(curl --silent \
+            --request GET \
+            "https://api.getpostman.com/environments?workspace=${POSTMAN_WORKSPACE_ID}" \
+            --header "X-Api-Key: ${POSTMAN_API_KEY}")
+
+          EXISTING_ENV_UID=$(echo "$SEARCH_ENV" | jq -r --arg NAME "$ENV_NAME" \
+            '.environments[] | select(.name==$NAME) | .uid' | head -1)
+
+          # Prepare environment JSON
+          cat > postman_environment.json << EOF
+          {
+            "environment": {
+              "name": "$ENV_NAME",
+              "values": [
+                {
+                  "key": "baseUrl",
+                  "value": "$BASE_URL",
+                  "enabled": true,
+                  "type": "default"
+                },
+                {
+                  "key": "apiVersion",
+                  "value": "${{ steps.version.outputs.version }}",
+                  "enabled": true,
+                  "type": "default"
+                }
+              ]
+            }
+          }
+          EOF
+
+          if [ -z "$EXISTING_ENV_UID" ] || [ "$EXISTING_ENV_UID" == "null" ]; then
+            # Create new environment
+            CREATE_ENV_RESPONSE=$(curl --silent \
+              --request POST \
+              "https://api.getpostman.com/environments?workspace=${POSTMAN_WORKSPACE_ID}" \
+              --header "X-Api-Key: ${POSTMAN_API_KEY}" \
+              --header "Content-Type: application/json" \
+              --data @postman_environment.json)
+            echo "Created new Postman Environment: ${ENV_NAME}"
+          else
+            # Update existing environment
+            UPDATE_ENV_RESPONSE=$(curl --silent \
+              --request PUT \
+              "https://api.getpostman.com/environments/${EXISTING_ENV_UID}" \
+              --header "X-Api-Key: ${POSTMAN_API_KEY}" \
+              --header "Content-Type: application/json" \
+              --data @postman_environment.json)
+            echo "Updated existing Postman Environment: ${ENV_NAME}"
+          fi
+
+          echo "✅ Postman Environment Sync Successful"
 
       # ------------------------------------------------------------
       # COMPLETED
@@ -2183,3 +2264,5 @@ jobs:
       - name: Workflow Completed
         run: |
           echo "🎉 Workflow Completed Successfully"
+          echo "Version: ${{ steps.version.outputs.version }}"
+          echo "Environment: ${{ steps.version.outputs.environment }}"
