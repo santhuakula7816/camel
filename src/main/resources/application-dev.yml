@@ -1,5 +1,0 @@
-springdoc:
-  api-docs:
-    servers:
-      - url: "{{baseUrl}}"
-        description: "Use Postman environment variable 'baseUrl'"

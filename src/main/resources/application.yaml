@@ -6,7 +6,6 @@ spring:
   data:
     mongodb:
       uri: mongodb://localhost:27017/testdb
-
   datasource:
     url: jdbc:postgresql://localhost:5432/mapper
     username: mapper
@@ -20,5 +19,3 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 server:
   port: 8084
-
-
