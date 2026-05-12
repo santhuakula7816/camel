@@ -1310,7 +1310,7 @@ jobs:
                 "get": {
                   "tags": ["mapper-json-controller"],
                   "summary": "Get all JSON mappingsss",
-                  "operationId": "getAllMappings",
+                  "operationId": "getAllJsons",
 
                   "responses": {
                     "200": {
