@@ -400,7 +400,7 @@ jobs:
           sleep 30
 
           for i in {1..15}; do
-            if curl -s https://85a7-183-82-123-72.ngrok-free.app/v3/api-docs > /dev/null; then
+            if curl -s http://localhost:8084/v3/api-docs > /dev/null; then
               echo "Application is ready"
               break
             fi
@@ -443,7 +443,7 @@ jobs:
         run: |
           mkdir -p openapi
           curl --fail --silent --show-error \
-            https://85a7-183-82-123-72.ngrok-free.app/v3/api-docs \
+            http://localhost:8084/v3/api-docs \
             --output openapi/raw_spec.json
           if [ ! -s openapi/raw_spec.json ]; then
             echo "❌ OpenAPI spec is empty"
