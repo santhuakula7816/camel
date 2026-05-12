@@ -1687,6 +1687,6 @@ jobs:
       # ------------------------------------------------------------
       # COMPLETED
       # ------------------------------------------------------------
-      - name: Workflow Completed
+      - name: Workflow Completedd
         run: |
           echo "🎉 Workflow Completed Successfully"
