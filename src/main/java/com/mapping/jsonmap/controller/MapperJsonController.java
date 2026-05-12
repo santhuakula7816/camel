@@ -44,13 +44,13 @@ public class MapperJsonController {
         return ResponseEntity.ok(mapperJson);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/update/{id}")
     public ResponseEntity<MapperJson> update(@PathVariable(required = false) final String id, @RequestBody MapperJson mapperJson) {
         MapperJson mapperJson1 = mapperService.update(id, mapperJson);
         return ResponseEntity.ok(mapperJson1);
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/delete/{id}")
     public ResponseEntity<Void> delete(@RequestParam String id) {
         mapperService.delete(id);
         return ResponseEntity.noContent().build();
