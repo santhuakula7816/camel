@@ -256,6 +256,370 @@
 #       - name: Workflow Completed
 #         run: |
 #           echo "🎉 API Registration Workflow Completed Successfully"
+
+## second one
+
+# name: Register JSON Map Service API
+
+# on:
+#   push:
+#     branches:
+#       - main
+#       - dev
+#       - "release/**"
+#     tags:
+#       - "v*"
+
+# jobs:
+#   register:
+#     runs-on: ubuntu-latest
+
+#     env:
+#       CENTRAL_REGISTRY_URL: https://be07-183-82-123-72.ngrok-free.app
+
+#     steps:
+#       # ------------------------------------------------------------
+#       # Checkout Repository
+#       # ------------------------------------------------------------
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+
+#       # ------------------------------------------------------------
+#       # Install jq
+#       # ------------------------------------------------------------
+#       - name: Install jq
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y jq
+
+#       # ------------------------------------------------------------
+#       # Setup Node.js
+#       # ------------------------------------------------------------
+#       - name: Setup Node.js
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: 20
+
+#       # ------------------------------------------------------------
+#       # Install OpenAPI Converter
+#       # ------------------------------------------------------------
+#       - name: Install OpenAPI Converter
+#         run: |
+#           npm install -g openapi-to-postmanv2
+
+#       # ------------------------------------------------------------
+#       # Determine Environment and Version
+#       # ------------------------------------------------------------
+#       - name: Determine environment and version
+#         id: version
+#         shell: bash
+#         run: |
+
+#           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+#             VERSION="${GITHUB_REF#refs/tags/}"
+#             ENVIRONMENT="prod"
+
+#           elif [[ "${GITHUB_REF}" == refs/heads/release/* ]]; then
+#             VERSION="${GITHUB_REF#refs/heads/release/}"
+#             ENVIRONMENT="uat"
+
+#           elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
+#             VERSION="main"
+#             ENVIRONMENT="staging"
+
+#           elif [[ "${GITHUB_REF}" == refs/heads/dev ]]; then
+#             VERSION="dev"
+#             ENVIRONMENT="dev"
+
+#           else
+#             VERSION="snapshot"
+#             ENVIRONMENT="dev"
+#           fi
+
+#           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+#           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+#           echo "Environment: $ENVIRONMENT"
+#           echo "Version: $VERSION"
+
+#       # ------------------------------------------------------------
+#       # Generate OpenAPI Spec Dynamically
+#       # ------------------------------------------------------------
+#       - name: Generate OpenAPI spec
+#         shell: bash
+#         run: |
+
+#           mkdir -p openapi
+
+#           cat > openapi/fixed_spec.json << 'EOF'
+#           {
+#             "openapi": "3.0.3",
+#             "info": {
+#               "title": "JSON Map Service API",
+#               "version": "1.0.0",
+#               "description": "API for managing JSON mapping data"
+#             },
+#             "servers": [
+#               {
+#                 "url": "http://localhost:8084",
+#                 "description": "Local Development Server"
+#               }
+#             ],
+#             "paths": {
+#               "/json/getAll": {
+#                 "get": {
+#                   "tags": ["mapper-json-controller"],
+#                   "summary": "Get all JSON mappings",
+#                   "operationId": "getAllLocations",
+#                   "responses": {
+#                     "200": {
+#                       "description": "List of all JSON mappings"
+#                     }
+#                   }
+#                 }
+#               },
+#               "/json/create": {
+#                 "post": {
+#                   "tags": ["mapper-json-controller"],
+#                   "summary": "Create JSON mapping",
+#                   "operationId": "createRack",
+#                   "responses": {
+#                     "200": {
+#                       "description": "JSON mapping created successfully"
+#                     }
+#                   }
+#                 }
+#               },
+#               "/json/{id}": {
+#                 "put": {
+#                   "tags": ["mapper-json-controller"],
+#                   "summary": "Update JSON mapping",
+#                   "operationId": "update",
+#                   "responses": {
+#                     "200": {
+#                       "description": "JSON mapping updated successfully"
+#                     }
+#                   }
+#                 },
+#                 "delete": {
+#                   "tags": ["mapper-json-controller"],
+#                   "summary": "Delete JSON mapping",
+#                   "operationId": "delete",
+#                   "responses": {
+#                     "200": {
+#                       "description": "JSON mapping deleted successfully"
+#                     }
+#                   }
+#                 }
+#               }
+#             }
+#           }
+#           EOF
+
+#           echo "✅ OpenAPI spec generated dynamically"
+
+#       # ------------------------------------------------------------
+#       # Validate OpenAPI Spec
+#       # ------------------------------------------------------------
+#       - name: Validate OpenAPI spec
+#         shell: bash
+#         run: |
+
+#           echo "📦 Validating OpenAPI spec..."
+
+#           if [ ! -f "openapi/fixed_spec.json" ]; then
+#             echo "❌ openapi/fixed_spec.json not found"
+#             exit 1
+#           fi
+
+#           OPENAPI_VERSION=$(jq -r '.openapi' openapi/fixed_spec.json)
+
+#           if [ -z "$OPENAPI_VERSION" ] || [ "$OPENAPI_VERSION" == "null" ]; then
+#             echo "❌ Invalid OpenAPI specification"
+#             exit 1
+#           fi
+
+#           echo "OpenAPI Version: $OPENAPI_VERSION"
+
+#           echo "✅ OpenAPI validation successful"
+
+#       # ------------------------------------------------------------
+#       # Convert OpenAPI -> Postman Collection
+#       # ------------------------------------------------------------
+#       - name: Convert OpenAPI to Postman Collection
+#         shell: bash
+#         run: |
+
+#           mkdir -p generated
+
+#           echo "🔄 Converting OpenAPI to Postman Collection..."
+
+#           openapi2postmanv2 \
+#             -s openapi/fixed_spec.json \
+#             -o generated/postman_collection.json \
+#             -p
+
+#           echo "--------------------------------------"
+#           echo "Generated Collection Info"
+#           echo "--------------------------------------"
+
+#           cat generated/postman_collection.json | jq '.info'
+
+#           echo "--------------------------------------"
+
+#           if [ ! -f "generated/postman_collection.json" ]; then
+#             echo "❌ Collection generation failed"
+#             exit 1
+#           fi
+
+#           echo "✅ Postman collection generated"
+
+#       # ------------------------------------------------------------
+#       # Validate Postman Collection
+#       # ------------------------------------------------------------
+#       - name: Validate Postman Collection
+#         shell: bash
+#         run: |
+
+#           echo "📦 Validating generated Postman collection..."
+
+#           ITEM_COUNT=$(cat generated/postman_collection.json | jq '.item | length')
+
+#           if [ -z "$ITEM_COUNT" ] || [ "$ITEM_COUNT" == "null" ]; then
+#             echo "❌ Invalid collection structure"
+#             exit 1
+#           fi
+
+#           echo "Endpoints Found: $ITEM_COUNT"
+
+#           echo "✅ Postman collection validated"
+
+#       # ------------------------------------------------------------
+#       # Create Postman Payload
+#       # ------------------------------------------------------------
+#       - name: Create Postman Payload
+#         shell: bash
+#         run: |
+
+#           jq -n \
+#             --slurpfile collection generated/postman_collection.json \
+#             '{collection: $collection[0]}' \
+#             > postman_payload.json
+
+#           echo "✅ Postman payload generated"
+
+#       # ------------------------------------------------------------
+#       # Register API Pipeline
+#       # ------------------------------------------------------------
+#       - name: Register API Pipeline
+#         shell: bash
+#         run: |
+
+#           echo "🚀 Registering API..."
+
+#           RESPONSE=$(curl --location --silent --show-error \
+#             --request POST "${CENTRAL_REGISTRY_URL}/registry/pipeline/register" \
+#             --form "apiName=jsonmap-service" \
+#             --form "description=JSON Mapping Service" \
+#             --form "gitRepository=https://github.com/${{ github.repository }}" \
+#             --form "version=${{ steps.version.outputs.version }}" \
+#             --form "environment=${{ steps.version.outputs.environment }}" \
+#             --form "baseUrl=http://localhost:8084" \
+#             --form "breakingChange=false" \
+#             --form "collectionFile=@generated/postman_collection.json;type=application/json")
+
+#           echo "--------------------------------------"
+#           echo "Registry Response"
+#           echo "--------------------------------------"
+
+#           echo "$RESPONSE"
+
+#           echo "--------------------------------------"
+
+#           if [[ -z "$RESPONSE" ]]; then
+#             echo "❌ Empty response from registry"
+#             exit 1
+#           fi
+
+#           echo "✅ API Registered"
+
+#       # ------------------------------------------------------------
+#       # Sync Collection to Postman
+#       # ------------------------------------------------------------
+#       - name: Sync Collection to Postman
+#         env:
+#           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+#           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
+#         shell: bash
+#         run: |
+
+#           echo "📦 Syncing Collection to Postman..."
+
+#           COLLECTION_NAME="jsonmap-service-${{ steps.version.outputs.version }}"
+
+#           SEARCH_RESPONSE=$(curl --silent \
+#             --request GET \
+#             "https://api.getpostman.com/collections" \
+#             --header "X-Api-Key: ${POSTMAN_API_KEY}")
+
+#           EXISTING_UID=$(echo "$SEARCH_RESPONSE" | jq -r \
+#             --arg NAME "$COLLECTION_NAME" \
+#             '.collections[] | select(.name==$NAME) | .uid' | head -1)
+
+#           echo "Existing UID: $EXISTING_UID"
+
+#           # --------------------------------------------------------
+#           # UPDATE EXISTING COLLECTION
+#           # --------------------------------------------------------
+#           if [ ! -z "$EXISTING_UID" ] && [ "$EXISTING_UID" != "null" ]; then
+
+#             echo "♻️ Updating existing collection..."
+
+#             RESPONSE=$(curl --silent \
+#               --request PUT \
+#               "https://api.getpostman.com/collections/${EXISTING_UID}" \
+#               --header "X-Api-Key: ${POSTMAN_API_KEY}" \
+#               --header "Content-Type: application/json" \
+#               --data @postman_payload.json)
+
+#           # --------------------------------------------------------
+#           # CREATE NEW COLLECTION
+#           # --------------------------------------------------------
+#           else
+
+#             echo "🆕 Creating new collection..."
+
+#             RESPONSE=$(curl --silent \
+#               --request POST \
+#               "https://api.getpostman.com/collections?workspace=${POSTMAN_WORKSPACE_ID}" \
+#               --header "X-Api-Key: ${POSTMAN_API_KEY}" \
+#               --header "Content-Type: application/json" \
+#               --data @postman_payload.json)
+
+#           fi
+
+#           echo "--------------------------------------"
+#           echo "Postman Response"
+#           echo "--------------------------------------"
+
+#           echo "$RESPONSE" | jq '.'
+
+#           echo "--------------------------------------"
+
+#           if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+#             echo "❌ Postman sync failed"
+#             exit 1
+#           fi
+
+#           echo "✅ Postman Sync Successful"
+
+#       # ------------------------------------------------------------
+#       # Workflow Completed
+#       # ------------------------------------------------------------
+#       - name: Workflow Completed
+#         run: |
+#           echo "🎉 API Registration Workflow Completed Successfully..."
+
 name: Register JSON Map Service API
 
 on:
@@ -305,42 +669,52 @@ jobs:
           npm install -g openapi-to-postmanv2
 
       # ------------------------------------------------------------
-      # Determine Environment and Version
+      # Determine Environment + Version
       # ------------------------------------------------------------
       - name: Determine environment and version
         id: version
         shell: bash
         run: |
 
+          SHORT_SHA=$(git rev-parse --short HEAD)
+
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/}"
+
+            VERSION="${GITHUB_REF#refs/tags/v}"
             ENVIRONMENT="prod"
 
           elif [[ "${GITHUB_REF}" == refs/heads/release/* ]]; then
-            VERSION="${GITHUB_REF#refs/heads/release/}"
+
+            RELEASE_VERSION="${GITHUB_REF#refs/heads/release/}"
+
+            VERSION="${RELEASE_VERSION}-RC"
             ENVIRONMENT="uat"
 
           elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
-            VERSION="main"
+
+            VERSION="staging-${SHORT_SHA}"
             ENVIRONMENT="staging"
 
           elif [[ "${GITHUB_REF}" == refs/heads/dev ]]; then
-            VERSION="dev"
+
+            VERSION="dev-${SHORT_SHA}"
             ENVIRONMENT="dev"
 
           else
-            VERSION="snapshot"
+
+            VERSION="snapshot-${SHORT_SHA}"
             ENVIRONMENT="dev"
+
           fi
 
           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-          echo "Environment: $ENVIRONMENT"
-          echo "Version: $VERSION"
+          echo "Environment=$ENVIRONMENT"
+          echo "Version=$VERSION"
 
       # ------------------------------------------------------------
-      # Generate OpenAPI Spec Dynamically
+      # Generate OpenAPI Spec
       # ------------------------------------------------------------
       - name: Generate OpenAPI spec
         shell: bash
@@ -353,58 +727,25 @@ jobs:
             "openapi": "3.0.3",
             "info": {
               "title": "JSON Map Service API",
-              "version": "1.0.0",
-              "description": "API for managing JSON mapping data"
+              "version": "1.0.0"
             },
-            "servers": [
-              {
-                "url": "http://localhost:8084",
-                "description": "Local Development Server"
-              }
-            ],
             "paths": {
               "/json/getAll": {
                 "get": {
-                  "tags": ["mapper-json-controller"],
-                  "summary": "Get all JSON mappings",
-                  "operationId": "getAllLocations",
+                  "summary": "Get all mappings",
                   "responses": {
                     "200": {
-                      "description": "List of all JSON mappings"
+                      "description": "success"
                     }
                   }
                 }
               },
               "/json/create": {
                 "post": {
-                  "tags": ["mapper-json-controller"],
-                  "summary": "Create JSON mapping",
-                  "operationId": "createRack",
+                  "summary": "Create mapping",
                   "responses": {
                     "200": {
-                      "description": "JSON mapping created successfully"
-                    }
-                  }
-                }
-              },
-              "/json/{id}": {
-                "put": {
-                  "tags": ["mapper-json-controller"],
-                  "summary": "Update JSON mapping",
-                  "operationId": "update",
-                  "responses": {
-                    "200": {
-                      "description": "JSON mapping updated successfully"
-                    }
-                  }
-                },
-                "delete": {
-                  "tags": ["mapper-json-controller"],
-                  "summary": "Delete JSON mapping",
-                  "operationId": "delete",
-                  "responses": {
-                    "200": {
-                      "description": "JSON mapping deleted successfully"
+                      "description": "success"
                     }
                   }
                 }
@@ -413,35 +754,10 @@ jobs:
           }
           EOF
 
-          echo "✅ OpenAPI spec generated dynamically"
+          echo "✅ OpenAPI spec generated"
 
       # ------------------------------------------------------------
-      # Validate OpenAPI Spec
-      # ------------------------------------------------------------
-      - name: Validate OpenAPI spec
-        shell: bash
-        run: |
-
-          echo "📦 Validating OpenAPI spec..."
-
-          if [ ! -f "openapi/fixed_spec.json" ]; then
-            echo "❌ openapi/fixed_spec.json not found"
-            exit 1
-          fi
-
-          OPENAPI_VERSION=$(jq -r '.openapi' openapi/fixed_spec.json)
-
-          if [ -z "$OPENAPI_VERSION" ] || [ "$OPENAPI_VERSION" == "null" ]; then
-            echo "❌ Invalid OpenAPI specification"
-            exit 1
-          fi
-
-          echo "OpenAPI Version: $OPENAPI_VERSION"
-
-          echo "✅ OpenAPI validation successful"
-
-      # ------------------------------------------------------------
-      # Convert OpenAPI -> Postman Collection
+      # Convert OpenAPI -> Postman
       # ------------------------------------------------------------
       - name: Convert OpenAPI to Postman Collection
         shell: bash
@@ -449,50 +765,39 @@ jobs:
 
           mkdir -p generated
 
-          echo "🔄 Converting OpenAPI to Postman Collection..."
-
           openapi2postmanv2 \
             -s openapi/fixed_spec.json \
             -o generated/postman_collection.json \
             -p
 
-          echo "--------------------------------------"
-          echo "Generated Collection Info"
-          echo "--------------------------------------"
-
-          cat generated/postman_collection.json | jq '.info'
-
-          echo "--------------------------------------"
-
-          if [ ! -f "generated/postman_collection.json" ]; then
-            echo "❌ Collection generation failed"
-            exit 1
-          fi
-
           echo "✅ Postman collection generated"
 
       # ------------------------------------------------------------
-      # Validate Postman Collection
+      # Add Version Folder
       # ------------------------------------------------------------
-      - name: Validate Postman Collection
+      - name: Add version folder to collection
         shell: bash
         run: |
 
-          echo "📦 Validating generated Postman collection..."
+          VERSION="${{ steps.version.outputs.version }}"
 
-          ITEM_COUNT=$(cat generated/postman_collection.json | jq '.item | length')
+          jq --arg VERSION "$VERSION" '
+          .item = [
+            {
+              "name": $VERSION,
+              "item": .item
+            }
+          ]
+          ' generated/postman_collection.json \
+          > generated/versioned_collection.json
 
-          if [ -z "$ITEM_COUNT" ] || [ "$ITEM_COUNT" == "null" ]; then
-            echo "❌ Invalid collection structure"
-            exit 1
-          fi
+          mv generated/versioned_collection.json \
+             generated/postman_collection.json
 
-          echo "Endpoints Found: $ITEM_COUNT"
-
-          echo "✅ Postman collection validated"
+          echo "✅ Version folder added"
 
       # ------------------------------------------------------------
-      # Create Postman Payload
+      # Create Payload
       # ------------------------------------------------------------
       - name: Create Postman Payload
         shell: bash
@@ -503,10 +808,10 @@ jobs:
             '{collection: $collection[0]}' \
             > postman_payload.json
 
-          echo "✅ Postman payload generated"
+          echo "✅ Payload created"
 
       # ------------------------------------------------------------
-      # Register API Pipeline
+      # Register API Registry
       # ------------------------------------------------------------
       - name: Register API Pipeline
         shell: bash
@@ -514,8 +819,9 @@ jobs:
 
           echo "🚀 Registering API..."
 
-          RESPONSE=$(curl --location --silent --show-error \
-            --request POST "${CENTRAL_REGISTRY_URL}/registry/pipeline/register" \
+          RESPONSE=$(curl --silent --show-error \
+            --request POST \
+            "${CENTRAL_REGISTRY_URL}/registry/pipeline/register" \
             --form "apiName=jsonmap-service" \
             --form "description=JSON Mapping Service" \
             --form "gitRepository=https://github.com/${{ github.repository }}" \
@@ -525,23 +831,18 @@ jobs:
             --form "breakingChange=false" \
             --form "collectionFile=@generated/postman_collection.json;type=application/json")
 
-          echo "--------------------------------------"
-          echo "Registry Response"
-          echo "--------------------------------------"
-
           echo "$RESPONSE"
 
-          echo "--------------------------------------"
-
           if [[ -z "$RESPONSE" ]]; then
-            echo "❌ Empty response from registry"
+            echo "❌ Registry failed"
             exit 1
           fi
 
-          echo "✅ API Registered"
+          echo "✅ Registry Success"
 
       # ------------------------------------------------------------
       # Sync Collection to Postman
+      # SINGLE COLLECTION STRATEGY
       # ------------------------------------------------------------
       - name: Sync Collection to Postman
         env:
@@ -550,9 +851,9 @@ jobs:
         shell: bash
         run: |
 
-          echo "📦 Syncing Collection to Postman..."
+          echo "📦 Syncing Collection..."
 
-          COLLECTION_NAME="jsonmap-service-${{ steps.version.outputs.version }}"
+          COLLECTION_NAME="jsonmap-service"
 
           SEARCH_RESPONSE=$(curl --silent \
             --request GET \
@@ -563,14 +864,14 @@ jobs:
             --arg NAME "$COLLECTION_NAME" \
             '.collections[] | select(.name==$NAME) | .uid' | head -1)
 
-          echo "Existing UID: $EXISTING_UID"
+          echo "Existing UID=$EXISTING_UID"
 
           # --------------------------------------------------------
           # UPDATE EXISTING COLLECTION
           # --------------------------------------------------------
           if [ ! -z "$EXISTING_UID" ] && [ "$EXISTING_UID" != "null" ]; then
 
-            echo "♻️ Updating existing collection..."
+            echo "♻️ Updating collection..."
 
             RESPONSE=$(curl --silent \
               --request PUT \
@@ -579,12 +880,14 @@ jobs:
               --header "Content-Type: application/json" \
               --data @postman_payload.json)
 
+            COLLECTION_UID="$EXISTING_UID"
+
           # --------------------------------------------------------
-          # CREATE NEW COLLECTION
+          # CREATE COLLECTION
           # --------------------------------------------------------
           else
 
-            echo "🆕 Creating new collection..."
+            echo "🆕 Creating collection..."
 
             RESPONSE=$(curl --silent \
               --request POST \
@@ -593,26 +896,24 @@ jobs:
               --header "Content-Type: application/json" \
               --data @postman_payload.json)
 
-          fi
+            COLLECTION_UID=$(echo "$RESPONSE" | jq -r '.collection.uid')
 
-          echo "--------------------------------------"
-          echo "Postman Response"
-          echo "--------------------------------------"
+          fi
 
           echo "$RESPONSE" | jq '.'
 
-          echo "--------------------------------------"
+          echo "Collection UID=$COLLECTION_UID"
 
           if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
             echo "❌ Postman sync failed"
             exit 1
           fi
 
-          echo "✅ Postman Sync Successful"
+          echo "✅ Postman Sync Success"
 
       # ------------------------------------------------------------
-      # Workflow Completed
+      # Completed
       # ------------------------------------------------------------
       - name: Workflow Completed
         run: |
-          echo "🎉 API Registration Workflow Completed Successfully..."
+          echo "🎉 Workflow completed successfully"
