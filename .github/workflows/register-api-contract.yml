@@ -1739,7 +1739,7 @@ jobs:
         run: npm install -g openapi-to-postmanv2
 
       # ------------------------------------------------------------
-      # SETUP JAVA (for Gradle)
+      # SETUP JAVA
       # ------------------------------------------------------------
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -1748,34 +1748,39 @@ jobs:
           java-version: "17"
 
       # ------------------------------------------------------------
-      # BUILD WITH GRADLE (create JAR)
+      # BUILD WITH GRADLE (Groovy)
       # ------------------------------------------------------------
       - name: Build with Gradle
         run: |
-          chmod +x gradlew
-          ./gradlew clean build -x test
+          # Use the Gradle wrapper if it exists, otherwise use system Gradle
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew clean build -x test
+          else
+            gradle clean build -x test
+          fi
 
       # ------------------------------------------------------------
-      # START SPRING BOOT APP (assuming JAR is in build/libs)
+      # START SPRING BOOT APPLICATION
       # ------------------------------------------------------------
       - name: Start Spring Boot Application
         run: |
-          # Find the JAR file (adjust path if needed)
-          JAR_FILE=$(find build/libs -name "*.jar" | head -1)
+          # Find the JAR file (Gradle puts it in build/libs)
+          JAR_FILE=$(find build/libs -name "*.jar" 2>/dev/null | head -1)
           if [ -z "$JAR_FILE" ]; then
-            echo "❌ No JAR file found in build/libs"
+            echo "❌ No JAR found in build/libs/ - did the build succeed?"
             exit 1
           fi
           echo "Starting JAR: $JAR_FILE"
           java -jar "$JAR_FILE" &
           sleep 30
-          # Wait for OpenAPI endpoint
-          for i in {1..10}; do
+          # Wait for OpenAPI endpoint to become available
+          for i in {1..15}; do
             if curl -s http://localhost:8084/v3/api-docs > /dev/null; then
               echo "Application is ready"
               break
             fi
-            echo "Waiting for app... ($i/10)"
+            echo "Waiting for app... ($i/15)"
             sleep 5
           done
 
@@ -1836,7 +1841,6 @@ jobs:
         shell: bash
         run: |
           cp openapi/raw_spec.json openapi/postman_ready.json
-          # Escape properly: use single quotes for jq script
           jq '.paths |= with_entries(
             .value |= with_entries(
               .value.operationId //= (.key + "_" + (.value.operationId // ""))
@@ -1944,7 +1948,7 @@ jobs:
             item: .item
           }' generated/postman_collection.json > version_folder.json
 
-          # Check if version folder exists → remove if yes
+          # Check if version folder exists → remove if yes (override)
           VERSION_EXISTS=$(jq -r \
             --arg versionFolder "$VERSION_FOLDER" \
             '.collection.item[]?.name | select(. == $versionFolder)' \
@@ -1993,7 +1997,7 @@ jobs:
           echo "✅ Postman collection synced and UID stored"
 
       # ------------------------------------------------------------
-      # SYNC POSTMAN ENVIRONMENT (FETCH BASEURL FROM YOUR REGISTRY DB)
+      # SYNC POSTMAN ENVIRONMENT (FETCH BASEURL FROM REGISTRY DB)
       # ------------------------------------------------------------
       - name: Sync Postman Environment
         env:
