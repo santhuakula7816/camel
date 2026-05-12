@@ -1825,7 +1825,7 @@ jobs:
         run: |
           mkdir -p openapi
           curl --fail --silent --show-error \
-            http://localhost:8084/v3/api-docs \
+            https://85a7-183-82-123-72.ngrok-free.app/v3/api-docs \
             --output openapi/raw_spec.json
           if [ ! -s openapi/raw_spec.json ]; then
             echo "❌ OpenAPI spec is empty"
