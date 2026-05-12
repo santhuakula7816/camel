@@ -257,10 +257,6 @@
 #         run: |
 #           echo "🎉 API Registration Workflow Completed Successfully"
 
-
-
-
-
 ## second one
 
 # name: Register JSON Map Service API
@@ -643,9 +639,8 @@ jobs:
       CENTRAL_REGISTRY_URL: https://be07-183-82-123-72.ngrok-free.app
 
     steps:
-
       # ------------------------------------------------------------
-      # CHECKOUT
+      # CHECKOUT REPOSITORY
       # ------------------------------------------------------------
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -693,17 +688,17 @@ jobs:
 
           elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
 
-            VERSION="${GITHUB_SHA::7}"
+            VERSION="staging"
             ENVIRONMENT="staging"
 
           elif [[ "${GITHUB_REF}" == refs/heads/dev ]]; then
 
-            VERSION="${GITHUB_SHA::7}"
+            VERSION="dev"
             ENVIRONMENT="dev"
 
           else
 
-            VERSION="${GITHUB_SHA::7}"
+            VERSION="snapshot"
             ENVIRONMENT="dev"
 
           fi
@@ -1054,7 +1049,7 @@ jobs:
           echo "✅ Collection Generated"
 
       # ------------------------------------------------------------
-      # VALIDATE COLLECTION
+      # VALIDATE POSTMAN COLLECTION
       # ------------------------------------------------------------
       - name: Validate Postman Collection
         shell: bash
@@ -1094,7 +1089,7 @@ jobs:
           echo "--------------------------------------"
 
       # ------------------------------------------------------------
-      # SYNC TO POSTMAN
+      # SYNC COLLECTION TO POSTMAN
       # ------------------------------------------------------------
       - name: Sync Collection to Postman
         env:
@@ -1109,6 +1104,9 @@ jobs:
 
           echo "Version Folder: $VERSION_FOLDER"
 
+          # --------------------------------------------------------
+          # GET ALL COLLECTIONS
+          # --------------------------------------------------------
           SEARCH_RESPONSE=$(curl --silent \
             --request GET \
             "https://api.getpostman.com/collections" \
@@ -1120,8 +1118,14 @@ jobs:
 
           echo "Existing UID: $EXISTING_UID"
 
+          # --------------------------------------------------------
+          # GET GENERATED ITEMS
+          # --------------------------------------------------------
           ITEMS=$(jq '.item' generated/postman_collection.json)
 
+          # --------------------------------------------------------
+          # CREATE VERSION FOLDER
+          # --------------------------------------------------------
           jq -n \
             --arg folder "$VERSION_FOLDER" \
             --argjson items "$ITEMS" \
@@ -1131,7 +1135,7 @@ jobs:
             }' > version_folder.json
 
           # --------------------------------------------------------
-          # CREATE NEW MASTER COLLECTION
+          # CREATE MASTER COLLECTION
           # --------------------------------------------------------
           if [ -z "$EXISTING_UID" ] || [ "$EXISTING_UID" == "null" ]; then
 
@@ -1210,6 +1214,6 @@ jobs:
       # ------------------------------------------------------------
       # WORKFLOW COMPLETED
       # ------------------------------------------------------------
-      - name: Workflows Completed
+      - name: Workflow Completed
         run: |
           echo "🎉 Workflow Completed Successfully"
