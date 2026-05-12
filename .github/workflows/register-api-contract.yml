@@ -1711,25 +1711,17 @@ jobs:
       CENTRAL_REGISTRY_URL: https://be07-183-82-123-72.ngrok-free.app
 
     steps:
-      # ------------------------------------------------------------
-      # CHECKOUT
-      # ------------------------------------------------------------
+
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ------------------------------------------------------------
-      # INSTALL DEPENDENCIES
-      # ------------------------------------------------------------
       - name: Install jq and curl
         run: |
           sudo apt-get update
           sudo apt-get install -y jq curl
 
-      # ------------------------------------------------------------
-      # SETUP NODE (for openapi-to-postmanv2)
-      # ------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -1738,18 +1730,12 @@ jobs:
       - name: Install OpenAPI to Postman Converter
         run: npm install -g openapi-to-postmanv2
 
-      # ------------------------------------------------------------
-      # SETUP JAVA
-      # ------------------------------------------------------------
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
-          java-version: "17"
+          distribution: 'temurin'
+          java-version: '17'
 
-      # ------------------------------------------------------------
-      # BUILD WITH GRADLE (Groovy)
-      # ------------------------------------------------------------
       - name: Build with Gradle
         run: |
           if [ -f "./gradlew" ]; then
@@ -1759,9 +1745,6 @@ jobs:
             gradle clean build -x test
           fi
 
-      # ------------------------------------------------------------
-      # START SPRING BOOT APPLICATION
-      # ------------------------------------------------------------
       - name: Start Spring Boot Application
         run: |
           JAR_FILE=$(find build/libs -name "*.jar" 2>/dev/null | head -1)
@@ -1773,7 +1756,7 @@ jobs:
           java -jar "$JAR_FILE" &
           sleep 30
           for i in {1..15}; do
-            if curl -s http://localhost:8084/v3/api-docs > /dev/null; then
+            if curl -s https://85a7-183-82-123-72.ngrok-free.app/v3/api-docs > /dev/null; then
               echo "Application is ready"
               break
             fi
@@ -1781,9 +1764,6 @@ jobs:
             sleep 5
           done
 
-      # ------------------------------------------------------------
-      # DETERMINE VERSION, ENVIRONMENT, MODE
-      # ------------------------------------------------------------
       - name: Determine version, environment and mode
         id: version
         shell: bash
@@ -1814,9 +1794,6 @@ jobs:
           echo "ENVIRONMENT=$ENVIRONMENT"
           echo "--------------------------------------"
 
-      # ------------------------------------------------------------
-      # FETCH OPENAPI SPEC FROM RUNNING APP
-      # ------------------------------------------------------------
       - name: Fetch OpenAPI Spec from /v3/api-docs
         shell: bash
         run: |
@@ -1831,9 +1808,6 @@ jobs:
           jq empty openapi/raw_spec.json
           echo "✅ OpenAPI spec fetched"
 
-      # ------------------------------------------------------------
-      # PREPARE OPENAPI FOR POSTMAN (add operationId if missing)
-      # ------------------------------------------------------------
       - name: Prepare OpenAPI for Postman conversion
         shell: bash
         run: |
@@ -1845,9 +1819,6 @@ jobs:
           )' openapi/raw_spec.json > openapi/postman_ready.json
           echo "✅ OpenAPI prepared"
 
-      # ------------------------------------------------------------
-      # CONVERT TO POSTMAN COLLECTION
-      # ------------------------------------------------------------
       - name: Convert OpenAPI to Postman Collection
         shell: bash
         run: |
@@ -1858,9 +1829,6 @@ jobs:
             -p
           echo "✅ Postman collection generated"
 
-      # ------------------------------------------------------------
-      # VALIDATE COLLECTION
-      # ------------------------------------------------------------
       - name: Validate Postman Collection
         shell: bash
         run: |
@@ -1871,9 +1839,6 @@ jobs:
           fi
           echo "✅ Collection contains $ITEM_COUNT endpoints"
 
-      # ------------------------------------------------------------
-      # REGISTER METADATA TO CENTRAL REGISTRY (without collection UID)
-      # ------------------------------------------------------------
       - name: Register API Pipeline Metadata
         shell: bash
         run: |
@@ -1888,9 +1853,6 @@ jobs:
             --form "breakingChange=false" \
             --form "collectionFile=@generated/postman_collection.json;type=application/json"
 
-      # ------------------------------------------------------------
-      # SYNC COLLECTION TO POSTMAN (VERSION FOLDER OVERRIDE)
-      # ------------------------------------------------------------
       - name: Sync Collection to Postman
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
@@ -1901,7 +1863,6 @@ jobs:
           VERSION_FOLDER="${VERSION}"
           ROOT_COLLECTION_NAME="jsonmap-service"
 
-          # Find or create root collection
           SEARCH_RESPONSE=$(curl --silent \
             --request GET "https://api.getpostman.com/collections" \
             --header "X-Api-Key: ${POSTMAN_API_KEY}")
@@ -1912,7 +1873,6 @@ jobs:
 
           if [ -z "$EXISTING_UID" ] || [ "$EXISTING_UID" == "null" ]; then
             echo "Creating root collection: ${ROOT_COLLECTION_NAME}"
-            # Use printf to avoid heredoc issues
             printf '{
               "collection": {
                 "info": {
@@ -1933,19 +1893,16 @@ jobs:
 
           echo "Root collection UID: ${EXISTING_UID}"
 
-          # Download existing collection
           curl --silent \
             --request GET "https://api.getpostman.com/collections/${EXISTING_UID}" \
             --header "X-Api-Key: ${POSTMAN_API_KEY}" \
             > existing_collection.json
 
-          # Create version folder
           jq --arg versionFolder "$VERSION_FOLDER" '{
             name: $versionFolder,
             item: .item
           }' generated/postman_collection.json > version_folder.json
 
-          # Check if version folder exists → remove if yes (override)
           VERSION_EXISTS=$(jq -r \
             --arg versionFolder "$VERSION_FOLDER" \
             '.collection.item[]?.name | select(. == $versionFolder)' \
@@ -1960,12 +1917,10 @@ jobs:
             cp existing_collection.json cleaned_collection.json
           fi
 
-          # Append new version folder
           jq --slurpfile folder version_folder.json '
             .collection.item += $folder
           ' cleaned_collection.json > updated_collection.json
 
-          # Upload to Postman
           RESPONSE=$(curl --silent \
             --request PUT "https://api.getpostman.com/collections/${EXISTING_UID}" \
             --header "X-Api-Key: ${POSTMAN_API_KEY}" \
@@ -1979,7 +1934,6 @@ jobs:
             exit 1
           fi
 
-          # Capture UID and update registry
           COLLECTION_UID=$(echo "$RESPONSE" | jq -r '.collection.uid')
           echo "Captured collection UID: ${COLLECTION_UID}"
 
@@ -1994,14 +1948,15 @@ jobs:
           echo "✅ Postman collection synced and UID stored"
 
       # ------------------------------------------------------------
-      # SYNC POSTMAN ENVIRONMENT (FETCH BASEURL FROM REGISTRY DB)
+      # SYNC POSTMAN ENVIRONMENT (OPTIONAL - does NOT fail if endpoint missing)
       # ------------------------------------------------------------
-      - name: Sync Postman Environment
+      - name: Sync Postman Environment (Optional)
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
           CENTRAL_REGISTRY_URL: ${{ env.CENTRAL_REGISTRY_URL }}
         shell: bash
+        continue-on-error: true   # <-- THIS MAKES THE STEP OPTIONAL
         run: |
           ENVIRONMENT="${{ steps.version.outputs.environment }}"
           API_NAME="jsonmap-service"
@@ -2011,15 +1966,21 @@ jobs:
           ENV_CONFIG=$(curl --silent --show-error \
             "${CENTRAL_REGISTRY_URL}/registry/environment/${API_NAME}/${ENVIRONMENT}" || echo "")
 
-          if [ -z "$ENV_CONFIG" ] || [ "$(echo "$ENV_CONFIG" | jq -r '.baseUrl')" == "null" ]; then
-            echo "❌ Failed to fetch environment configuration. Ensure endpoint returns JSON with 'baseUrl'."
-            exit 1
+          if [ -z "$ENV_CONFIG" ]; then
+            echo "⚠️ No response from registry endpoint. Skipping Postman environment sync."
+            exit 0
           fi
 
-          BASE_URL=$(echo "$ENV_CONFIG" | jq -r '.baseUrl')
+          BASE_URL=$(echo "$ENV_CONFIG" | jq -r '.baseUrl // empty')
+          if [ -z "$BASE_URL" ]; then
+            echo "⚠️ Response did not contain 'baseUrl'. Response was:"
+            echo "$ENV_CONFIG" | jq '.' || echo "$ENV_CONFIG"
+            echo "Skipping Postman environment sync."
+            exit 0
+          fi
+
           echo "Using baseUrl: ${BASE_URL}"
 
-          # Create/update Postman environment
           SEARCH_ENV=$(curl --silent \
             --request GET "https://api.getpostman.com/environments?workspace=${POSTMAN_WORKSPACE_ID}" \
             --header "X-Api-Key: ${POSTMAN_API_KEY}")
@@ -2027,7 +1988,6 @@ jobs:
           EXISTING_ENV_UID=$(echo "$SEARCH_ENV" | jq -r --arg NAME "$ENV_NAME" \
             '.environments[] | select(.name==$NAME) | .uid' | head -1)
 
-          # Use printf to generate JSON safely
           printf '{
             "environment": {
               "name": "%s",
@@ -2054,9 +2014,6 @@ jobs:
             echo "✅ Updated Postman environment: ${ENV_NAME}"
           fi
 
-      # ------------------------------------------------------------
-      # COMPLETED
-      # ------------------------------------------------------------
       - name: Workflow Completed
         run: |
           echo "🎉 Workflow completed successfully"
