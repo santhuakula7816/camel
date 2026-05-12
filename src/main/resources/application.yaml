@@ -1,7 +1,8 @@
 spring:
   application:
     name: jsonmap
-
+  profiles:
+    active: dev
   data:
     mongodb:
       uri: mongodb://localhost:27017/testdb
@@ -9,7 +10,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/mapper
     username: mapper
-    password: 
+    password:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -17,3 +18,10 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+server:
+  port: 8084
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
