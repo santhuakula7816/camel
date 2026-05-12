@@ -1693,11 +1693,13 @@
 #       - name: Workflow Completedd
 #         run: |
 #           echo "🎉 Workflow Completed Successfully"
-
 name: Register JSON Map Service API
 
 on:
   push:
+    branches:
+      - main
+      - dev
     tags:
       - "*"
 
@@ -1714,6 +1716,8 @@ jobs:
       # ------------------------------------------------------------
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # ------------------------------------------------------------
       # INSTALL jq
@@ -1739,19 +1743,31 @@ jobs:
           npm install -g openapi-to-postmanv2
 
       # ------------------------------------------------------------
-      # DETERMINE VERSION
+      # DETERMINE VERSION + MODE
       # ------------------------------------------------------------
-      - name: Determine version
+      - name: Determine version and mode
         id: version
         shell: bash
         run: |
 
-          VERSION="${GITHUB_REF#refs/tags/}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+
+            VERSION="${GITHUB_REF#refs/tags/}"
+            MODE="NEW_VERSION"
+
+          else
+
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "snapshot")
+            MODE="UPDATE_VERSION"
+
+          fi
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "mode=$MODE" >> $GITHUB_OUTPUT
 
           echo "--------------------------------------"
-          echo "Detected Version: $VERSION"
+          echo "VERSION=$VERSION"
+          echo "MODE=$MODE"
           echo "--------------------------------------"
 
       # ------------------------------------------------------------
@@ -1786,7 +1802,6 @@ jobs:
                   "tags": ["mapper-json-controller"],
                   "summary": "Get all JSON mappings",
                   "operationId": "getAllJsons",
-
                   "responses": {
                     "200": {
                       "description": "List of mappings",
@@ -1971,8 +1986,6 @@ jobs:
         shell: bash
         run: |
 
-          echo "📦 Validating OpenAPI"
-
           OPENAPI_VERSION=$(jq -r '.openapi' openapi/fixed_spec.json)
 
           if [ -z "$OPENAPI_VERSION" ] || [ "$OPENAPI_VERSION" == "null" ]; then
@@ -2021,8 +2034,6 @@ jobs:
         shell: bash
         run: |
 
-          echo "🚀 Registering API"
-
           RESPONSE=$(curl --location --silent --show-error \
             --request POST "${CENTRAL_REGISTRY_URL}/registry/pipeline/register" \
             --form "apiName=jsonmap-service" \
@@ -2034,9 +2045,7 @@ jobs:
             --form "breakingChange=false" \
             --form "collectionFile=@generated/postman_collection.json;type=application/json")
 
-          echo "--------------------------------------"
           echo "$RESPONSE"
-          echo "--------------------------------------"
 
       # ------------------------------------------------------------
       # SYNC TO POSTMAN
@@ -2055,9 +2064,7 @@ jobs:
 
           VERSION_FOLDER="${VERSION}-${ENVIRONMENT}"
 
-          echo "--------------------------------------"
-          echo "Version Folder: $VERSION_FOLDER"
-          echo "--------------------------------------"
+          echo "VERSION_FOLDER=$VERSION_FOLDER"
 
           # --------------------------------------------------------
           # SEARCH ROOT COLLECTION
@@ -2071,14 +2078,10 @@ jobs:
             --arg NAME "$ROOT_COLLECTION_NAME" \
             '.collections[] | select(.name==$NAME) | .uid' | head -1)
 
-          echo "ROOT COLLECTION UID: $EXISTING_UID"
-
           # --------------------------------------------------------
-          # CREATE ROOT COLLECTION IF NOT EXISTS
+          # CREATE ROOT COLLECTION
           # --------------------------------------------------------
           if [ -z "$EXISTING_UID" ] || [ "$EXISTING_UID" == "null" ]; then
-
-            echo "🆕 Creating Root Collection"
 
             cat > root_collection.json << EOF
           {
@@ -2100,8 +2103,6 @@ jobs:
               --data @root_collection.json)
 
             EXISTING_UID=$(echo "$CREATE_RESPONSE" | jq -r '.collection.uid')
-
-            echo "Created UID: $EXISTING_UID"
           fi
 
           # --------------------------------------------------------
@@ -2124,21 +2125,19 @@ jobs:
           ' generated/postman_collection.json > version_folder.json
 
           # --------------------------------------------------------
-          # CHECK VERSION EXISTS
+          # CHECK EXISTING VERSION
           # --------------------------------------------------------
           VERSION_EXISTS=$(jq -r \
             --arg versionFolder "$VERSION_FOLDER" \
             '.collection.item[]?.name | select(. == $versionFolder)' \
             existing_collection.json)
 
-          echo "Existing Version Folder: $VERSION_EXISTS"
-
           # --------------------------------------------------------
-          # OVERRIDE EXISTING VERSION
+          # SAME VERSION -> OVERRIDE
           # --------------------------------------------------------
           if [ ! -z "$VERSION_EXISTS" ]; then
 
-            echo "♻️ Existing version found -> overriding"
+            echo "♻️ Updating Existing Version"
 
             jq --arg versionFolder "$VERSION_FOLDER" '
             .collection.item |= map(select(.name != $versionFolder))
@@ -2146,14 +2145,14 @@ jobs:
 
           else
 
-            echo "🆕 New version -> creating"
+            echo "🆕 Creating New Version"
 
             cp existing_collection.json cleaned_collection.json
 
           fi
 
           # --------------------------------------------------------
-          # APPEND NEW VERSION FOLDER
+          # APPEND VERSION FOLDER
           # --------------------------------------------------------
           jq --slurpfile folder version_folder.json '
           .collection.item += $folder
@@ -2169,20 +2168,14 @@ jobs:
             --header "Content-Type: application/json" \
             --data @updated_collection.json)
 
-          echo "--------------------------------------"
-          echo "Postman Update Response"
-          echo "--------------------------------------"
-
           echo "$RESPONSE" | jq '.'
-
-          echo "--------------------------------------"
 
           if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
             echo "❌ Postman Sync Failed"
             exit 1
           fi
 
-          echo "✅ Version Folder Synced"
+          echo "✅ Postman Sync Successful"
 
       # ------------------------------------------------------------
       # COMPLETED
