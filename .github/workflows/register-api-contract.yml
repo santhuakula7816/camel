@@ -1739,7 +1739,7 @@ jobs:
         run: npm install -g openapi-to-postmanv2
 
       # ------------------------------------------------------------
-      # SETUP JAVA (to run your Spring Boot app)
+      # SETUP JAVA (for Gradle)
       # ------------------------------------------------------------
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -1748,20 +1748,28 @@ jobs:
           java-version: "17"
 
       # ------------------------------------------------------------
-      # BUILD YOUR SPRING BOOT APPLICATION
+      # BUILD WITH GRADLE (create JAR)
       # ------------------------------------------------------------
-      - name: Build with Maven
+      - name: Build with Gradle
         run: |
-          mvn clean package -DskipTests
+          chmod +x gradlew
+          ./gradlew clean build -x test
 
       # ------------------------------------------------------------
-      # START SPRING BOOT APP IN BACKGROUND
+      # START SPRING BOOT APP (assuming JAR is in build/libs)
       # ------------------------------------------------------------
       - name: Start Spring Boot Application
         run: |
-          java -jar target/*.jar &
+          # Find the JAR file (adjust path if needed)
+          JAR_FILE=$(find build/libs -name "*.jar" | head -1)
+          if [ -z "$JAR_FILE" ]; then
+            echo "❌ No JAR file found in build/libs"
+            exit 1
+          fi
+          echo "Starting JAR: $JAR_FILE"
+          java -jar "$JAR_FILE" &
           sleep 30
-          # Wait for the OpenAPI endpoint to be ready
+          # Wait for OpenAPI endpoint
           for i in {1..10}; do
             if curl -s http://localhost:8084/v3/api-docs > /dev/null; then
               echo "Application is ready"
@@ -1778,8 +1786,6 @@ jobs:
         id: version
         shell: bash
         run: |
-
-          # ---- Version ----
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
             MODE="NEW_VERSION"
@@ -1788,13 +1794,11 @@ jobs:
             MODE="UPDATE_VERSION"
           fi
 
-          # ---- Environment from branch ----
           if [[ "${GITHUB_REF}" == refs/heads/main ]]; then
             ENVIRONMENT="prod"
           elif [[ "${GITHUB_REF}" == refs/heads/dev ]]; then
             ENVIRONMENT="dev"
           else
-            # For tag pushes, default to prod (or you can infer from the branch the tag is on)
             ENVIRONMENT="prod"
           fi
 
@@ -1809,43 +1813,39 @@ jobs:
           echo "--------------------------------------"
 
       # ------------------------------------------------------------
-      # FETCH OPENAPI SPEC FROM RUNNING APP (/v3/api-docs)
+      # FETCH OPENAPI SPEC FROM RUNNING APP
       # ------------------------------------------------------------
       - name: Fetch OpenAPI Spec from /v3/api-docs
         shell: bash
         run: |
           mkdir -p openapi
-          OPENAPI_URL="http://localhost:8084/v3/api-docs"
-
-          echo "Fetching OpenAPI spec from ${OPENAPI_URL}"
           curl --fail --silent --show-error \
-            "${OPENAPI_URL}" \
+            http://localhost:8084/v3/api-docs \
             --output openapi/raw_spec.json
-
           if [ ! -s openapi/raw_spec.json ]; then
-            echo "❌ OpenAPI spec is empty or could not be fetched"
+            echo "❌ OpenAPI spec is empty"
             exit 1
           fi
-
           jq empty openapi/raw_spec.json
-          echo "✅ OpenAPI spec fetched and validated"
+          echo "✅ OpenAPI spec fetched"
 
       # ------------------------------------------------------------
-      # PREPARE OPENAPI FOR POSTMAN CONVERSION (add operationId if missing)
+      # PREPARE OPENAPI FOR POSTMAN (add operationId if missing)
       # ------------------------------------------------------------
       - name: Prepare OpenAPI for Postman conversion
         shell: bash
         run: |
           cp openapi/raw_spec.json openapi/postman_ready.json
+          # Escape properly: use single quotes for jq script
           jq '.paths |= with_entries(
             .value |= with_entries(
               .value.operationId //= (.key + "_" + (.value.operationId // ""))
             )
           )' openapi/raw_spec.json > openapi/postman_ready.json
-          echo "✅ OpenAPI spec prepared"
+          echo "✅ OpenAPI prepared"
 
       # ------------------------------------------------------------
-      # CONVERT OPENAPI TO POSTMAN COLLECTION
+      # CONVERT TO POSTMAN COLLECTION
       # ------------------------------------------------------------
       - name: Convert OpenAPI to Postman Collection
         shell: bash
@@ -1855,17 +1855,17 @@ jobs:
             -s openapi/postman_ready.json \
             -o generated/postman_collection.json \
             -p
-          echo "✅ Postman Collection generated"
+          echo "✅ Postman collection generated"
 
       # ------------------------------------------------------------
-      # VALIDATE GENERATED COLLECTION
+      # VALIDATE COLLECTION
       # ------------------------------------------------------------
       - name: Validate Postman Collection
         shell: bash
         run: |
           ITEM_COUNT=$(jq '.item | length' generated/postman_collection.json)
           if [ "$ITEM_COUNT" == "null" ] || [ "$ITEM_COUNT" -eq 0 ]; then
-            echo "❌ Generated collection has no items"
+            echo "❌ Invalid collection"
             exit 1
           fi
           echo "✅ Collection contains $ITEM_COUNT endpoints"
@@ -1876,7 +1876,7 @@ jobs:
       - name: Register API Pipeline Metadata
         shell: bash
         run: |
-          curl --location --silent --show-error \
+          curl --silent --show-error \
             --request POST "${CENTRAL_REGISTRY_URL}/registry/pipeline/register" \
             --form "apiName=jsonmap-service" \
             --form "description=JSON Mapping Service" \
@@ -1888,7 +1888,7 @@ jobs:
             --form "collectionFile=@generated/postman_collection.json;type=application/json"
 
       # ------------------------------------------------------------
-      # SYNC COLLECTION TO POSTMAN (VERSION FOLDER OVERRIDE LOGIC)
+      # SYNC COLLECTION TO POSTMAN (VERSION FOLDER OVERRIDE)
       # ------------------------------------------------------------
       - name: Sync Collection to Postman
         env:
@@ -1896,12 +1896,9 @@ jobs:
           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         shell: bash
         run: |
-
           VERSION="${{ steps.version.outputs.version }}"
           VERSION_FOLDER="${VERSION}"
           ROOT_COLLECTION_NAME="jsonmap-service"
-
-          echo "Version folder: ${VERSION_FOLDER}"
 
           # Find or create root collection
           SEARCH_RESPONSE=$(curl --silent \
@@ -1935,42 +1932,39 @@ jobs:
 
           echo "Root collection UID: ${EXISTING_UID}"
 
-          # Download current collection
+          # Download existing collection
           curl --silent \
             --request GET "https://api.getpostman.com/collections/${EXISTING_UID}" \
             --header "X-Api-Key: ${POSTMAN_API_KEY}" \
             > existing_collection.json
 
-          # Create version folder from generated collection
-          jq --arg versionFolder "$VERSION_FOLDER" '
-            {
-              name: $versionFolder,
-              item: .item
-            }
-          ' generated/postman_collection.json > version_folder.json
+          # Create version folder
+          jq --arg versionFolder "$VERSION_FOLDER" '{
+            name: $versionFolder,
+            item: .item
+          }' generated/postman_collection.json > version_folder.json
 
-          # Check if version folder exists -> remove if yes (override)
+          # Check if version folder exists → remove if yes
           VERSION_EXISTS=$(jq -r \
             --arg versionFolder "$VERSION_FOLDER" \
             '.collection.item[]?.name | select(. == $versionFolder)' \
             existing_collection.json)
 
           if [ ! -z "$VERSION_EXISTS" ]; then
-            echo "♻️ Version folder ${VERSION_FOLDER} exists → will override"
+            echo "♻️ Overriding existing version folder: ${VERSION_FOLDER}"
             jq --arg versionFolder "$VERSION_FOLDER" '
               .collection.item |= map(select(.name != $versionFolder))
             ' existing_collection.json > cleaned_collection.json
           else
-            echo "🆕 New version folder ${VERSION_FOLDER} → will append"
             cp existing_collection.json cleaned_collection.json
           fi
 
-          # Append new/updated version folder
+          # Append new version folder
           jq --slurpfile folder version_folder.json '
             .collection.item += $folder
           ' cleaned_collection.json > updated_collection.json
 
-          # Upload updated collection
+          # Upload to Postman
           RESPONSE=$(curl --silent \
             --request PUT "https://api.getpostman.com/collections/${EXISTING_UID}" \
             --header "X-Api-Key: ${POSTMAN_API_KEY}" \
@@ -1984,11 +1978,11 @@ jobs:
             exit 1
           fi
 
-          # Capture collection UID and send to central registry
+          # Capture UID and update registry
           COLLECTION_UID=$(echo "$RESPONSE" | jq -r '.collection.uid')
           echo "Captured collection UID: ${COLLECTION_UID}"
 
-          curl --location --silent --show-error \
+          curl --silent --show-error \
             --request POST "${CENTRAL_REGISTRY_URL}/registry/update-collection" \
             --form "apiName=jsonmap-service" \
             --form "version=${{ steps.version.outputs.version }}" \
@@ -2008,39 +2002,23 @@ jobs:
           CENTRAL_REGISTRY_URL: ${{ env.CENTRAL_REGISTRY_URL }}
         shell: bash
         run: |
-
           ENVIRONMENT="${{ steps.version.outputs.environment }}"
           API_NAME="jsonmap-service"
           ENV_NAME="${API_NAME}-${ENVIRONMENT}"
 
-          echo "Fetching environment configuration for ${API_NAME} / ${ENVIRONMENT} from registry..."
-
-          # --------------------------------------------------------
-          # CALL YOUR REGISTRY API TO GET BASEURL (and other config)
-          # Adjust the endpoint to match your actual API design.
-          # Example: GET /registry/environment/{apiName}/{environment}
-          # --------------------------------------------------------
+          echo "Fetching environment config from registry for ${API_NAME}/${ENVIRONMENT}"
           ENV_CONFIG=$(curl --silent --show-error \
-            "${CENTRAL_REGISTRY_URL}/registry/environment/${API_NAME}/${ENVIRONMENT}" \
-            || echo "")
+            "${CENTRAL_REGISTRY_URL}/registry/environment/${API_NAME}/${ENVIRONMENT}" || echo "")
 
           if [ -z "$ENV_CONFIG" ] || [ "$(echo "$ENV_CONFIG" | jq -r '.baseUrl')" == "null" ]; then
-            echo "❌ Failed to fetch environment configuration from registry. Please ensure the endpoint exists and returns a JSON with 'baseUrl'."
+            echo "❌ Failed to fetch environment configuration. Ensure endpoint returns JSON with 'baseUrl'."
             exit 1
           fi
 
           BASE_URL=$(echo "$ENV_CONFIG" | jq -r '.baseUrl')
           echo "Using baseUrl: ${BASE_URL}"
 
-          # Optional: fetch other variables like apiKey, tenantId, etc.
-          # EXTRA_VARS=$(echo "$ENV_CONFIG" | jq -r '.additionalVariables // {}')
-
-          # --------------------------------------------------------
-          # CREATE / UPDATE POSTMAN ENVIRONMENT
-          # --------------------------------------------------------
-          echo "Syncing Postman environment: ${ENV_NAME}"
-
-          # Search for existing environment
+          # Create/update Postman environment
           SEARCH_ENV=$(curl --silent \
             --request GET "https://api.getpostman.com/environments?workspace=${POSTMAN_WORKSPACE_ID}" \
             --header "X-Api-Key: ${POSTMAN_API_KEY}")
@@ -2048,52 +2026,39 @@ jobs:
           EXISTING_ENV_UID=$(echo "$SEARCH_ENV" | jq -r --arg NAME "$ENV_NAME" \
             '.environments[] | select(.name==$NAME) | .uid' | head -1)
 
-          # Prepare environment JSON with baseUrl and optionally version
           cat > postman_environment.json << EOF
           {
             "environment": {
               "name": "$ENV_NAME",
               "values": [
-                {
-                  "key": "baseUrl",
-                  "value": "$BASE_URL",
-                  "enabled": true,
-                  "type": "default"
-                },
-                {
-                  "key": "apiVersion",
-                  "value": "${{ steps.version.outputs.version }}",
-                  "enabled": true,
-                  "type": "default"
-                }
+                { "key": "baseUrl", "value": "$BASE_URL", "enabled": true, "type": "default" },
+                { "key": "apiVersion", "value": "${{ steps.version.outputs.version }}", "enabled": true, "type": "default" }
               ]
             }
           }
           EOF
 
           if [ -z "$EXISTING_ENV_UID" ] || [ "$EXISTING_ENV_UID" == "null" ]; then
-            # Create new environment
             curl --silent --show-error \
               --request POST "https://api.getpostman.com/environments?workspace=${POSTMAN_WORKSPACE_ID}" \
               --header "X-Api-Key: ${POSTMAN_API_KEY}" \
               --header "Content-Type: application/json" \
               --data @postman_environment.json
-            echo "✅ Created new Postman environment: ${ENV_NAME}"
+            echo "✅ Created Postman environment: ${ENV_NAME}"
           else
-            # Update existing environment
             curl --silent --show-error \
               --request PUT "https://api.getpostman.com/environments/${EXISTING_ENV_UID}" \
               --header "X-Api-Key: ${POSTMAN_API_KEY}" \
               --header "Content-Type: application/json" \
               --data @postman_environment.json
-            echo "✅ Updated existing Postman environment: ${ENV_NAME}"
+            echo "✅ Updated Postman environment: ${ENV_NAME}"
           fi
 
       # ------------------------------------------------------------
-      # WORKFLOW COMPLETED
+      # COMPLETED
       # ------------------------------------------------------------
       - name: Workflow Completed
         run: |
-          echo "🎉 All steps completed successfully"
+          echo "🎉 Workflow completed successfully"
           echo "Version: ${{ steps.version.outputs.version }}"
           echo "Environment: ${{ steps.version.outputs.environment }}"
