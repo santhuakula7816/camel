@@ -45,7 +45,7 @@ public class MapperJsonController {
     }
 
     @PutMapping("/update/{id}")
-    public ResponseEntity<MapperJson> update(@PathVariable(required = false) final String id, @RequestBody MapperJson mapperJson) {
+    public ResponseEntity<MapperJson> update(@PathVariable(required = true) final String id, @RequestBody MapperJson mapperJson) {
         MapperJson mapperJson1 = mapperService.update(id, mapperJson);
         return ResponseEntity.ok(mapperJson1);
     }
