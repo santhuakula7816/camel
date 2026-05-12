@@ -620,16 +620,611 @@
 #         run: |
 #           echo "🎉 API Registration Workflow Completed Successfully..."
 
+## same collection different version
+
+# name: Register JSON Map Service API
+
+# on:
+#   push:
+#     branches:
+#       - main
+#       - dev
+#       - "release/**"
+#     tags:
+#       - "v*"
+
+# jobs:
+#   register:
+#     runs-on: ubuntu-latest
+
+#     env:
+#       CENTRAL_REGISTRY_URL: https://be07-183-82-123-72.ngrok-free.app
+
+#     steps:
+#       # ------------------------------------------------------------
+#       # CHECKOUT REPOSITORY
+#       # ------------------------------------------------------------
+#       - name: Checkout Repository
+#         uses: actions/checkout@v4
+
+#       # ------------------------------------------------------------
+#       # INSTALL jq
+#       # ------------------------------------------------------------
+#       - name: Install jq
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y jq
+
+#       # ------------------------------------------------------------
+#       # SETUP NODE
+#       # ------------------------------------------------------------
+#       - name: Setup Node.js
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: 20
+
+#       # ------------------------------------------------------------
+#       # INSTALL OPENAPI CONVERTER
+#       # ------------------------------------------------------------
+#       - name: Install OpenAPI Converter
+#         run: |
+#           npm install -g openapi-to-postmanv2
+
+#       # ------------------------------------------------------------
+#       # DETERMINE VERSION + ENVIRONMENT
+#       # ------------------------------------------------------------
+#       - name: Determine environment and version
+#         id: version
+#         shell: bash
+#         run: |
+
+#           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+
+#             VERSION="${GITHUB_REF#refs/tags/}"
+#             ENVIRONMENT="prod"
+
+#           elif [[ "${GITHUB_REF}" == refs/heads/release/* ]]; then
+
+#             VERSION="${GITHUB_REF#refs/heads/release/}"
+#             ENVIRONMENT="uat"
+
+#           elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
+
+#             VERSION="staging"
+#             ENVIRONMENT="staging"
+
+#           elif [[ "${GITHUB_REF}" == refs/heads/dev ]]; then
+
+#             VERSION="dev"
+#             ENVIRONMENT="dev"
+
+#           else
+
+#             VERSION="snapshot"
+#             ENVIRONMENT="dev"
+
+#           fi
+
+#           echo "version=$VERSION" >> $GITHUB_OUTPUT
+#           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+
+#           echo "VERSION=$VERSION"
+#           echo "ENVIRONMENT=$ENVIRONMENT"
+
+#       # ------------------------------------------------------------
+#       # GENERATE OPENAPI SPEC
+#       # ------------------------------------------------------------
+#       - name: Generate OpenAPI Spec
+#         shell: bash
+#         run: |
+
+#           mkdir -p openapi
+
+#           cat > openapi/fixed_spec.json << EOF
+#           {
+#             "openapi": "3.0.3",
+
+#             "info": {
+#               "title": "JSON Map Service API",
+#               "version": "${{ steps.version.outputs.version }}",
+#               "description": "API for managing JSON mapping data"
+#             },
+
+#             "servers": [
+#               {
+#                 "url": "http://localhost:8084",
+#                 "description": "Local Development Server"
+#               }
+#             ],
+
+#             "paths": {
+
+#               "/json/getAll": {
+
+#                 "get": {
+
+#                   "tags": ["mapper-json-controller"],
+
+#                   "summary": "Get all JSON mappings",
+
+#                   "operationId": "getAllMappings",
+
+#                   "responses": {
+
+#                     "200": {
+
+#                       "description": "List of JSON mappings",
+
+#                       "content": {
+
+#                         "application/json": {
+
+#                           "schema": {
+
+#                             "type": "array",
+
+#                             "items": {
+#                               "\$ref": "#/components/schemas/MapperJson"
+#                             }
+#                           }
+#                         }
+#                       }
+#                     }
+#                   }
+#                 }
+#               },
+
+#               "/json/create": {
+
+#                 "post": {
+
+#                   "tags": ["mapper-json-controller"],
+
+#                   "summary": "Create JSON mapping",
+
+#                   "operationId": "createMapping",
+
+#                   "requestBody": {
+
+#                     "required": true,
+
+#                     "content": {
+
+#                       "application/json": {
+
+#                         "schema": {
+#                           "\$ref": "#/components/schemas/MapperJson"
+#                         }
+#                       }
+#                     }
+#                   },
+
+#                   "responses": {
+
+#                     "200": {
+
+#                       "description": "JSON mapping created",
+
+#                       "content": {
+
+#                         "application/json": {
+
+#                           "schema": {
+#                             "\$ref": "#/components/schemas/MapperJson"
+#                           }
+#                         }
+#                       }
+#                     }
+#                   }
+#                 }
+#               },
+
+#               "/json/{id}": {
+
+#                 "put": {
+
+#                   "tags": ["mapper-json-controller"],
+
+#                   "summary": "Update JSON mapping",
+
+#                   "operationId": "updateMapping",
+
+#                   "parameters": [
+#                     {
+#                       "name": "id",
+#                       "in": "path",
+#                       "required": true,
+#                       "schema": {
+#                         "type": "string"
+#                       }
+#                     }
+#                   ],
+
+#                   "requestBody": {
+
+#                     "required": true,
+
+#                     "content": {
+
+#                       "application/json": {
+
+#                         "schema": {
+#                           "\$ref": "#/components/schemas/MapperJson"
+#                         }
+#                       }
+#                     }
+#                   },
+
+#                   "responses": {
+
+#                     "200": {
+
+#                       "description": "JSON mapping updated",
+
+#                       "content": {
+
+#                         "application/json": {
+
+#                           "schema": {
+#                             "\$ref": "#/components/schemas/MapperJson"
+#                           }
+#                         }
+#                       }
+#                     }
+#                   }
+#                 },
+
+#                 "delete": {
+
+#                   "tags": ["mapper-json-controller"],
+
+#                   "summary": "Delete JSON mapping",
+
+#                   "operationId": "deleteMapping",
+
+#                   "parameters": [
+#                     {
+#                       "name": "id",
+#                       "in": "path",
+#                       "required": true,
+#                       "schema": {
+#                         "type": "string"
+#                       }
+#                     }
+#                   ],
+
+#                   "requestBody": {
+
+#                     "required": false,
+
+#                     "content": {
+
+#                       "application/json": {
+
+#                         "schema": {
+#                           "\$ref": "#/components/schemas/DeleteRequest"
+#                         }
+#                       }
+#                     }
+#                   },
+
+#                   "responses": {
+
+#                     "200": {
+
+#                       "description": "JSON mapping deleted",
+
+#                       "content": {
+
+#                         "application/json": {
+
+#                           "schema": {
+#                             "\$ref": "#/components/schemas/DeleteResponse"
+#                           }
+#                         }
+#                       }
+#                     }
+#                   }
+#                 }
+#               }
+#             },
+
+#             "components": {
+
+#               "schemas": {
+
+#                 "MapperJson": {
+
+#                   "type": "object",
+
+#                   "properties": {
+
+#                     "id": {
+#                       "type": "string",
+#                       "example": "12345"
+#                     },
+
+#                     "name": {
+#                       "type": "string",
+#                       "example": "sample-mapping"
+#                     },
+
+#                     "data": {
+
+#                       "type": "object",
+
+#                       "additionalProperties": {
+#                         "type": "string"
+#                       },
+
+#                       "example": {
+#                         "source": "A",
+#                         "target": "B"
+#                       }
+#                     },
+
+#                     "createdBy": {
+#                       "type": "string",
+#                       "example": "admin"
+#                     }
+#                   }
+#                 },
+
+#                 "DeleteRequest": {
+
+#                   "type": "object",
+
+#                   "properties": {
+
+#                     "deletedBy": {
+#                       "type": "string",
+#                       "example": "admin"
+#                     },
+
+#                     "reason": {
+#                       "type": "string",
+#                       "example": "No longer needed"
+#                     }
+#                   }
+#                 },
+
+#                 "DeleteResponse": {
+
+#                   "type": "object",
+
+#                   "properties": {
+
+#                     "status": {
+#                       "type": "string",
+#                       "example": "SUCCESS"
+#                     },
+
+#                     "message": {
+#                       "type": "string",
+#                       "example": "JSON mapping deleted successfully"
+#                     }
+#                   }
+#                 }
+#               }
+#             }
+#           }
+#           EOF
+
+#           echo "✅ OpenAPI Spec Generated"
+
+#       # ------------------------------------------------------------
+#       # VALIDATE OPENAPI
+#       # ------------------------------------------------------------
+#       - name: Validate OpenAPI Spec
+#         shell: bash
+#         run: |
+
+#           echo "📦 Validating OpenAPI Spec"
+
+#           test -f openapi/fixed_spec.json
+
+#           OPENAPI_VERSION=$(jq -r '.openapi' openapi/fixed_spec.json)
+
+#           if [ -z "$OPENAPI_VERSION" ] || [ "$OPENAPI_VERSION" == "null" ]; then
+#             echo "❌ Invalid OpenAPI Spec"
+#             exit 1
+#           fi
+
+#           echo "OpenAPI Version: $OPENAPI_VERSION"
+
+#           echo "✅ OpenAPI Validation Success"
+
+#       # ------------------------------------------------------------
+#       # CONVERT OPENAPI TO POSTMAN
+#       # ------------------------------------------------------------
+#       - name: Convert OpenAPI to Postman Collection
+#         shell: bash
+#         run: |
+
+#           mkdir -p generated
+
+#           openapi2postmanv2 \
+#             -s openapi/fixed_spec.json \
+#             -o generated/postman_collection.json \
+#             -p
+
+#           echo "✅ Collection Generated"
+
+#       # ------------------------------------------------------------
+#       # VALIDATE POSTMAN COLLECTION
+#       # ------------------------------------------------------------
+#       - name: Validate Postman Collection
+#         shell: bash
+#         run: |
+
+#           ITEM_COUNT=$(jq '.item | length' generated/postman_collection.json)
+
+#           if [ -z "$ITEM_COUNT" ] || [ "$ITEM_COUNT" == "null" ]; then
+#             echo "❌ Invalid Collection"
+#             exit 1
+#           fi
+
+#           echo "Endpoints Found: $ITEM_COUNT"
+
+#       # ------------------------------------------------------------
+#       # REGISTER API TO CENTRAL REGISTRY
+#       # ------------------------------------------------------------
+#       - name: Register API Pipeline
+#         shell: bash
+#         run: |
+
+#           echo "🚀 Registering API"
+
+#           RESPONSE=$(curl --location --silent --show-error \
+#             --request POST "${CENTRAL_REGISTRY_URL}/registry/pipeline/register" \
+#             --form "apiName=jsonmap-service" \
+#             --form "description=JSON Mapping Service" \
+#             --form "gitRepository=https://github.com/${{ github.repository }}" \
+#             --form "version=${{ steps.version.outputs.version }}" \
+#             --form "environment=${{ steps.version.outputs.environment }}" \
+#             --form "baseUrl=http://localhost:8084" \
+#             --form "breakingChange=false" \
+#             --form "collectionFile=@generated/postman_collection.json;type=application/json")
+
+#           echo "--------------------------------------"
+#           echo "$RESPONSE"
+#           echo "--------------------------------------"
+
+#       # ------------------------------------------------------------
+#       # SYNC COLLECTION TO POSTMAN
+#       # ------------------------------------------------------------
+#       - name: Sync Collection to Postman
+#         env:
+#           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+#           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
+#         shell: bash
+#         run: |
+
+#           MASTER_COLLECTION_NAME="jsonmap-service"
+
+#           VERSION_FOLDER="${{ steps.version.outputs.version }}"
+
+#           echo "Version Folder: $VERSION_FOLDER"
+
+#           # --------------------------------------------------------
+#           # GET ALL COLLECTIONS
+#           # --------------------------------------------------------
+#           SEARCH_RESPONSE=$(curl --silent \
+#             --request GET \
+#             "https://api.getpostman.com/collections" \
+#             --header "X-Api-Key: ${POSTMAN_API_KEY}")
+
+#           EXISTING_UID=$(echo "$SEARCH_RESPONSE" | jq -r \
+#             --arg NAME "$MASTER_COLLECTION_NAME" \
+#             '.collections[] | select(.name==$NAME) | .uid' | head -1)
+
+#           echo "Existing UID: $EXISTING_UID"
+
+#           # --------------------------------------------------------
+#           # GET GENERATED ITEMS
+#           # --------------------------------------------------------
+#           ITEMS=$(jq '.item' generated/postman_collection.json)
+
+#           # --------------------------------------------------------
+#           # CREATE VERSION FOLDER
+#           # --------------------------------------------------------
+#           jq -n \
+#             --arg folder "$VERSION_FOLDER" \
+#             --argjson items "$ITEMS" \
+#             '{
+#               name: $folder,
+#               item: $items
+#             }' > version_folder.json
+
+#           # --------------------------------------------------------
+#           # CREATE MASTER COLLECTION
+#           # --------------------------------------------------------
+#           if [ -z "$EXISTING_UID" ] || [ "$EXISTING_UID" == "null" ]; then
+
+#             echo "🆕 Creating Master Collection"
+
+#             jq -n \
+#               --arg name "$MASTER_COLLECTION_NAME" \
+#               --slurpfile folder version_folder.json \
+#               '{
+#                 collection: {
+#                   info: {
+#                     name: $name,
+#                     schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+#                   },
+#                   item: [
+#                     $folder[0]
+#                   ]
+#                 }
+#               }' > final_payload.json
+
+#             RESPONSE=$(curl --silent \
+#               --request POST \
+#               "https://api.getpostman.com/collections?workspace=${POSTMAN_WORKSPACE_ID}" \
+#               --header "X-Api-Key: ${POSTMAN_API_KEY}" \
+#               --header "Content-Type: application/json" \
+#               --data @final_payload.json)
+
+#           else
+
+#             echo "📥 Fetching Existing Collection"
+
+#             curl --silent \
+#               --request GET \
+#               "https://api.getpostman.com/collections/${EXISTING_UID}" \
+#               --header "X-Api-Key: ${POSTMAN_API_KEY}" \
+#               > existing_collection.json
+
+#             echo "♻️ Removing Existing Version Folder"
+
+#             jq \
+#               --arg folder "$VERSION_FOLDER" \
+#               '.collection.item |= map(select(.name != $folder))' \
+#               existing_collection.json \
+#               > cleaned_collection.json
+
+#             echo "➕ Adding Updated Version Folder"
+
+#             jq \
+#               --slurpfile folder version_folder.json \
+#               '.collection.item += [$folder[0]]' \
+#               cleaned_collection.json \
+#               > updated_collection.json
+
+#             echo "♻️ Updating Master Collection"
+
+#             RESPONSE=$(curl --silent \
+#               --request PUT \
+#               "https://api.getpostman.com/collections/${EXISTING_UID}" \
+#               --header "X-Api-Key: ${POSTMAN_API_KEY}" \
+#               --header "Content-Type: application/json" \
+#               --data @updated_collection.json)
+
+#           fi
+
+#           echo "--------------------------------------"
+#           echo "$RESPONSE" | jq '.'
+#           echo "--------------------------------------"
+
+#           if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+#             echo "❌ Postman Sync Failed"
+#             exit 1
+#           fi
+
+#           echo "✅ Postman Sync Successful"
+
+#       # ------------------------------------------------------------
+#       # WORKFLOW COMPLETED
+#       # ------------------------------------------------------------
+#       - name: Workflow Completed
+#         run: |
+#           echo "🎉 Workflow Completed Successfully"
 name: Register JSON Map Service API
 
 on:
   push:
-    branches:
-      - main
-      - dev
-      - "release/**"
     tags:
-      - "v*"
+      - "*"
 
 jobs:
   register:
@@ -640,7 +1235,7 @@ jobs:
 
     steps:
       # ------------------------------------------------------------
-      # CHECKOUT REPOSITORY
+      # CHECKOUT
       # ------------------------------------------------------------
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -669,45 +1264,20 @@ jobs:
           npm install -g openapi-to-postmanv2
 
       # ------------------------------------------------------------
-      # DETERMINE VERSION + ENVIRONMENT
+      # DETERMINE VERSION
       # ------------------------------------------------------------
-      - name: Determine environment and version
+      - name: Determine version
         id: version
         shell: bash
         run: |
 
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-
-            VERSION="${GITHUB_REF#refs/tags/}"
-            ENVIRONMENT="prod"
-
-          elif [[ "${GITHUB_REF}" == refs/heads/release/* ]]; then
-
-            VERSION="${GITHUB_REF#refs/heads/release/}"
-            ENVIRONMENT="uat"
-
-          elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
-
-            VERSION="staging"
-            ENVIRONMENT="staging"
-
-          elif [[ "${GITHUB_REF}" == refs/heads/dev ]]; then
-
-            VERSION="dev"
-            ENVIRONMENT="dev"
-
-          else
-
-            VERSION="snapshot"
-            ENVIRONMENT="dev"
-
-          fi
+          VERSION="${GITHUB_REF#refs/tags/}"
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
 
-          echo "VERSION=$VERSION"
-          echo "ENVIRONMENT=$ENVIRONMENT"
+          echo "--------------------------------------"
+          echo "Detected Version: $VERSION"
+          echo "--------------------------------------"
 
       # ------------------------------------------------------------
       # GENERATE OPENAPI SPEC
@@ -718,49 +1288,37 @@ jobs:
 
           mkdir -p openapi
 
+          VERSION="${{ steps.version.outputs.version }}"
+
           cat > openapi/fixed_spec.json << EOF
           {
             "openapi": "3.0.3",
-
             "info": {
               "title": "JSON Map Service API",
-              "version": "${{ steps.version.outputs.version }}",
+              "version": "$VERSION",
               "description": "API for managing JSON mapping data"
             },
-
             "servers": [
               {
                 "url": "http://localhost:8084",
                 "description": "Local Development Server"
               }
             ],
-
             "paths": {
 
               "/json/getAll": {
-
                 "get": {
-
                   "tags": ["mapper-json-controller"],
-
                   "summary": "Get all JSON mappings",
-
                   "operationId": "getAllMappings",
 
                   "responses": {
-
                     "200": {
-
-                      "description": "List of JSON mappings",
-
+                      "description": "List of mappings",
                       "content": {
-
                         "application/json": {
-
                           "schema": {
-
                             "type": "array",
-
                             "items": {
                               "\$ref": "#/components/schemas/MapperJson"
                             }
@@ -773,23 +1331,15 @@ jobs:
               },
 
               "/json/create": {
-
                 "post": {
-
                   "tags": ["mapper-json-controller"],
-
                   "summary": "Create JSON mapping",
-
                   "operationId": "createMapping",
 
                   "requestBody": {
-
                     "required": true,
-
                     "content": {
-
                       "application/json": {
-
                         "schema": {
                           "\$ref": "#/components/schemas/MapperJson"
                         }
@@ -798,15 +1348,10 @@ jobs:
                   },
 
                   "responses": {
-
                     "200": {
-
-                      "description": "JSON mapping created",
-
+                      "description": "Created successfully",
                       "content": {
-
                         "application/json": {
-
                           "schema": {
                             "\$ref": "#/components/schemas/MapperJson"
                           }
@@ -820,11 +1365,8 @@ jobs:
               "/json/{id}": {
 
                 "put": {
-
                   "tags": ["mapper-json-controller"],
-
                   "summary": "Update JSON mapping",
-
                   "operationId": "updateMapping",
 
                   "parameters": [
@@ -839,13 +1381,9 @@ jobs:
                   ],
 
                   "requestBody": {
-
                     "required": true,
-
                     "content": {
-
                       "application/json": {
-
                         "schema": {
                           "\$ref": "#/components/schemas/MapperJson"
                         }
@@ -854,15 +1392,10 @@ jobs:
                   },
 
                   "responses": {
-
                     "200": {
-
-                      "description": "JSON mapping updated",
-
+                      "description": "Updated successfully",
                       "content": {
-
                         "application/json": {
-
                           "schema": {
                             "\$ref": "#/components/schemas/MapperJson"
                           }
@@ -873,11 +1406,8 @@ jobs:
                 },
 
                 "delete": {
-
                   "tags": ["mapper-json-controller"],
-
                   "summary": "Delete JSON mapping",
-
                   "operationId": "deleteMapping",
 
                   "parameters": [
@@ -891,31 +1421,11 @@ jobs:
                     }
                   ],
 
-                  "requestBody": {
-
-                    "required": false,
-
-                    "content": {
-
-                      "application/json": {
-
-                        "schema": {
-                          "\$ref": "#/components/schemas/DeleteRequest"
-                        }
-                      }
-                    }
-                  },
-
                   "responses": {
-
                     "200": {
-
-                      "description": "JSON mapping deleted",
-
+                      "description": "Deleted successfully",
                       "content": {
-
                         "application/json": {
-
                           "schema": {
                             "\$ref": "#/components/schemas/DeleteResponse"
                           }
@@ -928,18 +1438,15 @@ jobs:
             },
 
             "components": {
-
               "schemas": {
 
                 "MapperJson": {
-
                   "type": "object",
-
                   "properties": {
 
                     "id": {
                       "type": "string",
-                      "example": "12345"
+                      "example": "123"
                     },
 
                     "name": {
@@ -948,48 +1455,20 @@ jobs:
                     },
 
                     "data": {
-
                       "type": "object",
-
                       "additionalProperties": {
                         "type": "string"
                       },
-
                       "example": {
                         "source": "A",
                         "target": "B"
                       }
-                    },
-
-                    "createdBy": {
-                      "type": "string",
-                      "example": "admin"
-                    }
-                  }
-                },
-
-                "DeleteRequest": {
-
-                  "type": "object",
-
-                  "properties": {
-
-                    "deletedBy": {
-                      "type": "string",
-                      "example": "admin"
-                    },
-
-                    "reason": {
-                      "type": "string",
-                      "example": "No longer needed"
                     }
                   }
                 },
 
                 "DeleteResponse": {
-
                   "type": "object",
-
                   "properties": {
 
                     "status": {
@@ -999,7 +1478,7 @@ jobs:
 
                     "message": {
                       "type": "string",
-                      "example": "JSON mapping deleted successfully"
+                      "example": "Deleted successfully"
                     }
                   }
                 }
@@ -1017,25 +1496,21 @@ jobs:
         shell: bash
         run: |
 
-          echo "📦 Validating OpenAPI Spec"
-
-          test -f openapi/fixed_spec.json
+          echo "📦 Validating OpenAPI"
 
           OPENAPI_VERSION=$(jq -r '.openapi' openapi/fixed_spec.json)
 
           if [ -z "$OPENAPI_VERSION" ] || [ "$OPENAPI_VERSION" == "null" ]; then
-            echo "❌ Invalid OpenAPI Spec"
+            echo "❌ Invalid OpenAPI"
             exit 1
           fi
 
-          echo "OpenAPI Version: $OPENAPI_VERSION"
-
-          echo "✅ OpenAPI Validation Success"
+          echo "✅ OpenAPI Validated"
 
       # ------------------------------------------------------------
       # CONVERT OPENAPI TO POSTMAN
       # ------------------------------------------------------------
-      - name: Convert OpenAPI to Postman Collection
+      - name: Convert OpenAPI to Postman
         shell: bash
         run: |
 
@@ -1046,18 +1521,18 @@ jobs:
             -o generated/postman_collection.json \
             -p
 
-          echo "✅ Collection Generated"
+          echo "✅ Postman Collection Generated"
 
       # ------------------------------------------------------------
-      # VALIDATE POSTMAN COLLECTION
+      # VALIDATE COLLECTION
       # ------------------------------------------------------------
-      - name: Validate Postman Collection
+      - name: Validate Collection
         shell: bash
         run: |
 
           ITEM_COUNT=$(jq '.item | length' generated/postman_collection.json)
 
-          if [ -z "$ITEM_COUNT" ] || [ "$ITEM_COUNT" == "null" ]; then
+          if [ "$ITEM_COUNT" == "null" ]; then
             echo "❌ Invalid Collection"
             exit 1
           fi
@@ -1065,7 +1540,7 @@ jobs:
           echo "Endpoints Found: $ITEM_COUNT"
 
       # ------------------------------------------------------------
-      # REGISTER API TO CENTRAL REGISTRY
+      # REGISTER TO REGISTRY SERVICE
       # ------------------------------------------------------------
       - name: Register API Pipeline
         shell: bash
@@ -1079,7 +1554,7 @@ jobs:
             --form "description=JSON Mapping Service" \
             --form "gitRepository=https://github.com/${{ github.repository }}" \
             --form "version=${{ steps.version.outputs.version }}" \
-            --form "environment=${{ steps.version.outputs.environment }}" \
+            --form "environment=prod" \
             --form "baseUrl=http://localhost:8084" \
             --form "breakingChange=false" \
             --form "collectionFile=@generated/postman_collection.json;type=application/json")
@@ -1089,7 +1564,7 @@ jobs:
           echo "--------------------------------------"
 
       # ------------------------------------------------------------
-      # SYNC COLLECTION TO POSTMAN
+      # SYNC TO POSTMAN
       # ------------------------------------------------------------
       - name: Sync Collection to Postman
         env:
@@ -1098,14 +1573,16 @@ jobs:
         shell: bash
         run: |
 
-          MASTER_COLLECTION_NAME="jsonmap-service"
+          VERSION="${{ steps.version.outputs.version }}"
 
-          VERSION_FOLDER="${{ steps.version.outputs.version }}"
+          ROOT_COLLECTION_NAME="jsonmap-service"
 
-          echo "Version Folder: $VERSION_FOLDER"
+          echo "--------------------------------------"
+          echo "Syncing Version: $VERSION"
+          echo "--------------------------------------"
 
           # --------------------------------------------------------
-          # GET ALL COLLECTIONS
+          # SEARCH ROOT COLLECTION
           # --------------------------------------------------------
           SEARCH_RESPONSE=$(curl --silent \
             --request GET \
@@ -1113,95 +1590,91 @@ jobs:
             --header "X-Api-Key: ${POSTMAN_API_KEY}")
 
           EXISTING_UID=$(echo "$SEARCH_RESPONSE" | jq -r \
-            --arg NAME "$MASTER_COLLECTION_NAME" \
+            --arg NAME "$ROOT_COLLECTION_NAME" \
             '.collections[] | select(.name==$NAME) | .uid' | head -1)
 
-          echo "Existing UID: $EXISTING_UID"
+          echo "ROOT COLLECTION UID: $EXISTING_UID"
 
           # --------------------------------------------------------
-          # GET GENERATED ITEMS
-          # --------------------------------------------------------
-          ITEMS=$(jq '.item' generated/postman_collection.json)
-
-          # --------------------------------------------------------
-          # CREATE VERSION FOLDER
-          # --------------------------------------------------------
-          jq -n \
-            --arg folder "$VERSION_FOLDER" \
-            --argjson items "$ITEMS" \
-            '{
-              name: $folder,
-              item: $items
-            }' > version_folder.json
-
-          # --------------------------------------------------------
-          # CREATE MASTER COLLECTION
+          # CREATE ROOT COLLECTION IF NOT EXISTS
           # --------------------------------------------------------
           if [ -z "$EXISTING_UID" ] || [ "$EXISTING_UID" == "null" ]; then
 
-            echo "🆕 Creating Master Collection"
+            echo "🆕 Creating Root Collection"
 
-            jq -n \
-              --arg name "$MASTER_COLLECTION_NAME" \
-              --slurpfile folder version_folder.json \
-              '{
-                collection: {
-                  info: {
-                    name: $name,
-                    schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-                  },
-                  item: [
-                    $folder[0]
-                  ]
-                }
-              }' > final_payload.json
+            cat > root_collection.json << EOF
+          {
+            "collection": {
+              "info": {
+                "name": "$ROOT_COLLECTION_NAME",
+                "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+              },
+              "item": []
+            }
+          }
+          EOF
 
-            RESPONSE=$(curl --silent \
+            CREATE_RESPONSE=$(curl --silent \
               --request POST \
               "https://api.getpostman.com/collections?workspace=${POSTMAN_WORKSPACE_ID}" \
               --header "X-Api-Key: ${POSTMAN_API_KEY}" \
               --header "Content-Type: application/json" \
-              --data @final_payload.json)
+              --data @root_collection.json)
 
-          else
+            EXISTING_UID=$(echo "$CREATE_RESPONSE" | jq -r '.collection.uid')
 
-            echo "📥 Fetching Existing Collection"
-
-            curl --silent \
-              --request GET \
-              "https://api.getpostman.com/collections/${EXISTING_UID}" \
-              --header "X-Api-Key: ${POSTMAN_API_KEY}" \
-              > existing_collection.json
-
-            echo "♻️ Removing Existing Version Folder"
-
-            jq \
-              --arg folder "$VERSION_FOLDER" \
-              '.collection.item |= map(select(.name != $folder))' \
-              existing_collection.json \
-              > cleaned_collection.json
-
-            echo "➕ Adding Updated Version Folder"
-
-            jq \
-              --slurpfile folder version_folder.json \
-              '.collection.item += [$folder[0]]' \
-              cleaned_collection.json \
-              > updated_collection.json
-
-            echo "♻️ Updating Master Collection"
-
-            RESPONSE=$(curl --silent \
-              --request PUT \
-              "https://api.getpostman.com/collections/${EXISTING_UID}" \
-              --header "X-Api-Key: ${POSTMAN_API_KEY}" \
-              --header "Content-Type: application/json" \
-              --data @updated_collection.json)
-
+            echo "Created UID: $EXISTING_UID"
           fi
 
+          # --------------------------------------------------------
+          # DOWNLOAD EXISTING COLLECTION
+          # --------------------------------------------------------
+          curl --silent \
+            --request GET \
+            "https://api.getpostman.com/collections/${EXISTING_UID}" \
+            --header "X-Api-Key: ${POSTMAN_API_KEY}" \
+            > existing_collection.json
+
+          # --------------------------------------------------------
+          # CREATE VERSION FOLDER
+          # --------------------------------------------------------
+          jq --arg version "$VERSION" '
+          {
+            name: $version,
+            item: .item
+          }
+          ' generated/postman_collection.json > version_folder.json
+
+          # --------------------------------------------------------
+          # REMOVE OLD VERSION FOLDER
+          # --------------------------------------------------------
+          jq --arg version "$VERSION" '
+          .collection.item |= map(select(.name != $version))
+          ' existing_collection.json > cleaned_collection.json
+
+          # --------------------------------------------------------
+          # APPEND NEW VERSION FOLDER
+          # --------------------------------------------------------
+          jq --slurpfile folder version_folder.json '
+          .collection.item += $folder
+          ' cleaned_collection.json > updated_collection.json
+
+          # --------------------------------------------------------
+          # UPDATE COLLECTION
+          # --------------------------------------------------------
+          RESPONSE=$(curl --silent \
+            --request PUT \
+            "https://api.getpostman.com/collections/${EXISTING_UID}" \
+            --header "X-Api-Key: ${POSTMAN_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data @updated_collection.json)
+
           echo "--------------------------------------"
+          echo "Postman Update Response"
+          echo "--------------------------------------"
+
           echo "$RESPONSE" | jq '.'
+
           echo "--------------------------------------"
 
           if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
@@ -1209,10 +1682,10 @@ jobs:
             exit 1
           fi
 
-          echo "✅ Postman Sync Successful"
+          echo "✅ Version Folder Synced"
 
       # ------------------------------------------------------------
-      # WORKFLOW COMPLETED
+      # COMPLETED
       # ------------------------------------------------------------
       - name: Workflow Completed
         run: |
