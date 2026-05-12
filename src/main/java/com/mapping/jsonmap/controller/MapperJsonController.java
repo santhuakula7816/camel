@@ -50,7 +50,7 @@ public class MapperJsonController {
         return ResponseEntity.ok(mapperJson1);
     }
 
-    @DeleteMapping("/delete/{id}")
+    @DeleteMapping("/delete")
     public ResponseEntity<Void> delete(@RequestParam String id) {
         mapperService.delete(id);
         return ResponseEntity.noContent().build();
