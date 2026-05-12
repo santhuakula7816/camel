@@ -38,7 +38,7 @@ public class MapperJsonController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/getAll")
+    @GetMapping("/getAllJsons")
     public ResponseEntity<List<MapperJson>> getAllJsons() {
         List<MapperJson> mapperJson = mapperService.getAllJsons();
         return ResponseEntity.ok(mapperJson);
