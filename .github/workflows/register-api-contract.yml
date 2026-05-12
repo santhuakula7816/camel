@@ -1309,7 +1309,7 @@ jobs:
               "/json/getAll": {
                 "get": {
                   "tags": ["mapper-json-controller"],
-                  "summary": "Get all JSON mappings",
+                  "summary": "Get all JSON mappingsss",
                   "operationId": "getAllMappings",
 
                   "responses": {
