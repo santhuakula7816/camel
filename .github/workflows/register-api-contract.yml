@@ -1781,7 +1781,7 @@ jobs:
             ],
             "paths": {
 
-              "/json/getAll": {
+              "/json/getAllJsons": {
                 "get": {
                   "tags": ["mapper-json-controller"],
                   "summary": "Get all JSON mappings",
