@@ -1752,7 +1752,6 @@ jobs:
       # ------------------------------------------------------------
       - name: Build with Gradle
         run: |
-          # Use the Gradle wrapper if it exists, otherwise use system Gradle
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
             ./gradlew clean build -x test
@@ -1765,7 +1764,6 @@ jobs:
       # ------------------------------------------------------------
       - name: Start Spring Boot Application
         run: |
-          # Find the JAR file (Gradle puts it in build/libs)
           JAR_FILE=$(find build/libs -name "*.jar" 2>/dev/null | head -1)
           if [ -z "$JAR_FILE" ]; then
             echo "❌ No JAR found in build/libs/ - did the build succeed?"
@@ -1774,7 +1772,6 @@ jobs:
           echo "Starting JAR: $JAR_FILE"
           java -jar "$JAR_FILE" &
           sleep 30
-          # Wait for OpenAPI endpoint to become available
           for i in {1..15}; do
             if curl -s http://localhost:8084/v3/api-docs > /dev/null; then
               echo "Application is ready"
@@ -1825,7 +1822,7 @@ jobs:
         run: |
           mkdir -p openapi
           curl --fail --silent --show-error \
-            https://85a7-183-82-123-72.ngrok-free.app/v3/api-docs \
+          https://85a7-183-82-123-72.ngrok-free.app/v3/api-docs \
             --output openapi/raw_spec.json
           if [ ! -s openapi/raw_spec.json ]; then
             echo "❌ OpenAPI spec is empty"
@@ -1915,17 +1912,17 @@ jobs:
 
           if [ -z "$EXISTING_UID" ] || [ "$EXISTING_UID" == "null" ]; then
             echo "Creating root collection: ${ROOT_COLLECTION_NAME}"
-            cat > root_collection.json << EOF
-            {
+            # Use printf to avoid heredoc issues
+            printf '{
               "collection": {
                 "info": {
-                  "name": "$ROOT_COLLECTION_NAME",
+                  "name": "%s",
                   "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
                 },
                 "item": []
               }
-            }
-            EOF
+            }' "$ROOT_COLLECTION_NAME" > root_collection.json
+
             CREATE_RESPONSE=$(curl --silent \
               --request POST "https://api.getpostman.com/collections?workspace=${POSTMAN_WORKSPACE_ID}" \
               --header "X-Api-Key: ${POSTMAN_API_KEY}" \
@@ -2030,17 +2027,16 @@ jobs:
           EXISTING_ENV_UID=$(echo "$SEARCH_ENV" | jq -r --arg NAME "$ENV_NAME" \
             '.environments[] | select(.name==$NAME) | .uid' | head -1)
 
-          cat > postman_environment.json << EOF
-          {
+          # Use printf to generate JSON safely
+          printf '{
             "environment": {
-              "name": "$ENV_NAME",
+              "name": "%s",
               "values": [
-                { "key": "baseUrl", "value": "$BASE_URL", "enabled": true, "type": "default" },
-                { "key": "apiVersion", "value": "${{ steps.version.outputs.version }}", "enabled": true, "type": "default" }
+                { "key": "baseUrl", "value": "%s", "enabled": true, "type": "default" },
+                { "key": "apiVersion", "value": "%s", "enabled": true, "type": "default" }
               ]
             }
-          }
-          EOF
+          }' "$ENV_NAME" "$BASE_URL" "${{ steps.version.outputs.version }}" > postman_environment.json
 
           if [ -z "$EXISTING_ENV_UID" ] || [ "$EXISTING_ENV_UID" == "null" ]; then
             curl --silent --show-error \
