@@ -36,12 +36,8 @@ public class MapperServiceImpl implements MapperService {
 
     }
 
-    // @Override
-    // public MapperJson save(MapperJson mapperJson) {
-    //    return mapperJsonRepository.save(mapperJson);
-    // }
     @Override
-    public MapperJson save(MapperJson mapperJson) {
+    public MapperJson createMapper(MapperJson mapperJson) {
 
         MapperJson savedMongo = mapperJsonRepository.save(mapperJson);
         String mongoId = savedMongo.getId();
@@ -70,22 +66,12 @@ public class MapperServiceImpl implements MapperService {
     }
 
     @Override
-    public List<MapperJson> getAllJsons() {
+    public List<MapperJson> getAllMappers() {
         return mapperJsonRepository.findAll();
     }
 
-    // @Override
-    // public MapperJson update(String id, MapperJson mapperJson) {
-    //     Optional<MapperJson> existing = mapperJsonRepository.findById(id);
-    //     if (existing.isEmpty()) {
-    //         throw new RuntimeException("Data not found with id: " + id);
-    //     }
-    //     MapperJson oldData = existing.get();
-    //     oldData.setData(mapperJson.getData());
-    //     return mapperJsonRepository.save(oldData);
-    // }
     @Override
-    public MapperJson update(String id, MapperJson mapperJson) {
+    public MapperJson updateMapper(String id, MapperJson mapperJson) {
 
         MapperJson existing = mapperJsonRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Data not found with id: " + id));
@@ -107,7 +93,7 @@ public class MapperServiceImpl implements MapperService {
             bpmName = (String) metaData.get("bpmName");
         }
 
-        MapperData mapperData = mapperDataService.findByMongoId(id);
+        MapperData mapperData = mapperDataService.findMapperDataByMongoId(id);
         logger.info("the update the mapperdata {}", mapperData);
         mapperData.setMapperType(mapType);
         mapperData.setBpmName(bpmName);
@@ -117,7 +103,7 @@ public class MapperServiceImpl implements MapperService {
     }
 
     @Override
-    public void delete(String id) {
+    public void deleteMapper(String id) {
         mapperJsonRepository.deleteById(id);
     }
 

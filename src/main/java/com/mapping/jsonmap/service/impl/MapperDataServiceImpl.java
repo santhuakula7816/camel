@@ -20,9 +20,9 @@ public class MapperDataServiceImpl implements MapperDataService {
     }
 
     @Override
-    public MapperData findByMongoId(String Id) {
-        logger.info("Request to find by MongoId: {}", Id);
-        return mapperRepository.findByMongoId(Id);
+    public MapperData findMapperDataByMongoId(String id) {
+        logger.info("Request to find mapper data by MongoId: {}", id);
+        return mapperRepository.findByMongoId(id);
     }
 
 }

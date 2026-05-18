@@ -45,7 +45,6 @@ public class WebConfig implements ServletContextInitializer {
         if (!CollectionUtils.isEmpty(config.getAllowedOrigins()) || !CollectionUtils.isEmpty(config.getAllowedOriginPatterns())) {
             log.info("Registering CORS filter");
             source.registerCorsConfiguration("/api/**", config);
-            source.registerCorsConfiguration("/json/**", config);
             source.registerCorsConfiguration("/registry/**", config);
             source.registerCorsConfiguration("/v3/**", config);
         }

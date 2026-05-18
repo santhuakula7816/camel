@@ -6,12 +6,12 @@ import java.util.List;
 
 public interface MapperService {
 
-    public MapperJson save(MapperJson mapperJson);
+    MapperJson createMapper(MapperJson mapperJson);
 
-    public List<MapperJson> getAllJsons();
+    List<MapperJson> getAllMappers();
 
-    public MapperJson update(String Id, MapperJson mapperJson);
+    MapperJson updateMapper(String id, MapperJson mapperJson);
 
-    public void delete(String id);
+    void deleteMapper(String id);
     
 }

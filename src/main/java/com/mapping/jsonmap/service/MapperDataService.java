@@ -3,5 +3,5 @@ import com.mapping.jsonmap.domain.MapperData;
 
 public interface MapperDataService {
 
-    public MapperData findByMongoId(String Id);
+    MapperData findMapperDataByMongoId(String id);
 }

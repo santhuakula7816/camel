@@ -19,41 +19,41 @@ import com.mapping.jsonmap.service.MapperService;
 
 @RestController
 @CrossOrigin(origins = "http://localhost:8085")
-@RequestMapping("/json")
-public class MapperJsonController {
+@RequestMapping("/api/mappers")
+public class MapperController {
 
     private final MapperService mapperService;
 
-    public MapperJsonController(MapperService mapperService) {
+    public MapperController(MapperService mapperService) {
         this.mapperService = mapperService;
     }
 
-    @PostMapping("/create")
-    public ResponseEntity<MapperJson> createRack(@RequestBody Map<String, Object> request) {
+    @PostMapping("/createMapper")
+    public ResponseEntity<MapperJson> createMapper(@RequestBody Map<String, Object> request) {
 
         MapperJson mapperJson = new MapperJson();
         mapperJson.setData(request);
 
-        MapperJson result = mapperService.save(mapperJson);
+        MapperJson result = mapperService.createMapper(mapperJson);
 
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/getAllJsons")
-    public ResponseEntity<List<MapperJson>> getAllJsons() {
-        List<MapperJson> mapperJson = mapperService.getAllJsons();
-        return ResponseEntity.ok(mapperJson);
+    @GetMapping("/getAllMappers")
+    public ResponseEntity<List<MapperJson>> getAllMappers() {
+        List<MapperJson> mappers = mapperService.getAllMappers();
+        return ResponseEntity.ok(mappers);
     }
 
-    @PutMapping("/update/{id}")
-    public ResponseEntity<MapperJson> update(@PathVariable(required = true) final String id, @RequestBody MapperJson mapperJson) {
-        MapperJson mapperJson1 = mapperService.update(id, mapperJson);
-        return ResponseEntity.ok(mapperJson1);
+    @PutMapping("/updateMapper/{id}")
+    public ResponseEntity<MapperJson> updateMapper(@PathVariable(required = true) final String id, @RequestBody MapperJson mapperJson) {
+        MapperJson updatedMapper = mapperService.updateMapper(id, mapperJson);
+        return ResponseEntity.ok(updatedMapper);
     }
 
-    @DeleteMapping("/delete/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id) {
-        mapperService.delete(id);
+    @DeleteMapping("/deleteMapper/{id}")
+    public ResponseEntity<Void> deleteMapper(@PathVariable String id) {
+        mapperService.deleteMapper(id);
         return ResponseEntity.noContent().build();
     }
 
