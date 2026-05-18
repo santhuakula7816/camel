@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      CENTRAL_REGISTRY_URL: https://be07-183-82-123-72.ngrok-free.app
+      CENTRAL_REGISTRY_URL: https://03c0-183-82-123-72.ngrok-free.app
 
     steps:
 
@@ -61,7 +61,7 @@ jobs:
           java -jar "$JAR_FILE" &
           sleep 30
           for i in {1..15}; do
-            if curl -s https://0a67-205-254-168-41.ngrok-free.app/v3/api-docs > /dev/null; then
+            if curl -s https://b660-205-254-168-122.ngrok-free.app/v3/api-docs > /dev/null; then
               echo "Application is ready"
               break
             fi
@@ -104,7 +104,7 @@ jobs:
         run: |
           mkdir -p openapi
           curl --fail --silent --show-error \
-          https://0a67-205-254-168-41.ngrok-free.app/v3/api-docs \
+          https://b660-205-254-168-122.ngrok-free.app/v3/api-docs \
             --output openapi/raw_spec.json
           if [ ! -s openapi/raw_spec.json ]; then
             echo "❌ OpenAPI spec is empty"
