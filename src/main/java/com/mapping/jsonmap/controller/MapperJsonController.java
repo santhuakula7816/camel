@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,6 +18,7 @@ import com.mapping.jsonmap.domain.MapperJson;
 import com.mapping.jsonmap.service.MapperService;
 
 @RestController
+@CrossOrigin(origins = "http://localhost:8085")
 @RequestMapping("/json")
 public class MapperJsonController {
 
