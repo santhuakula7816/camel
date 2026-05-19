@@ -28,7 +28,7 @@ public class MapperController {
         this.mapperService = mapperService;
     }
 
-    @PostMapping("/createMapper")
+    @PostMapping
     public ResponseEntity<MapperJson> createMapper(@RequestBody Map<String, Object> request) {
 
         MapperJson mapperJson = new MapperJson();
@@ -39,19 +39,19 @@ public class MapperController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/getAllMappers")
+    @GetMapping
     public ResponseEntity<List<MapperJson>> getAllMappers() {
         List<MapperJson> mappers = mapperService.getAllMappers();
         return ResponseEntity.ok(mappers);
     }
 
-    @PutMapping("/updateMapper/{id}")
+    @PutMapping("/{id}")
     public ResponseEntity<MapperJson> updateMapper(@PathVariable(required = true) final String id, @RequestBody MapperJson mapperJson) {
         MapperJson updatedMapper = mapperService.updateMapper(id, mapperJson);
         return ResponseEntity.ok(updatedMapper);
     }
 
-    @DeleteMapping("/deleteMapper/{id}")
+    @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteMapper(@PathVariable String id) {
         mapperService.deleteMapper(id);
         return ResponseEntity.noContent().build();
