@@ -52,7 +52,7 @@ public class MapperController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteMapper(@PathVariable String id) {
+    public ResponseEntity<Void> deleteMapper(@RequestBody String id) {
         mapperService.deleteMapper(id);
         return ResponseEntity.noContent().build();
     }
