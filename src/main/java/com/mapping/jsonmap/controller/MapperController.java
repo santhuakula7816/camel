@@ -51,7 +51,7 @@ public class MapperController {
         return ResponseEntity.ok(updatedMapper);
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("")
     public ResponseEntity<Void> deleteMapper(@RequestBody String id) {
         mapperService.deleteMapper(id);
         return ResponseEntity.noContent().build();
